@@ -1,64 +1,93 @@
-use std::io;
+use std::net::SocketAddr;
 
-mod executor;
+mod context;
+mod fs;
 mod net;
 mod rand;
+mod task;
 mod time;
 
 pub struct Runtime {
     rand: rand::RandomHandle,
-    time: time::TimeHandle,
-    executor: executor::Executor,
+    task: task::Executor,
     net: net::NetworkRuntime,
+    fs: fs::FileSystemRuntime,
+}
+
+#[derive(Clone)]
+pub struct Handle {
+    rand: rand::RandomHandle,
+    time: time::TimeHandle,
+    task: task::TaskHandle,
+    net: net::NetworkHandle,
+    fs: fs::FileSystemHandle,
 }
 
 impl Runtime {
-    pub fn new() -> io::Result<Self> {
+    pub fn new() -> Self {
         Self::new_with_seed(0)
     }
 
-    pub fn new_with_seed(seed: u64) -> io::Result<Self> {
+    pub fn new_with_seed(seed: u64) -> Self {
         let rand = rand::RandomHandle::new_with_seed(seed);
-        let time = time::TimeHandle::new();
-        let executor = executor::Executor::new()?;
-        let net = net::NetworkRuntime::new(rand.clone(), time.clone(), executor.handle());
-        Ok(Runtime {
+        let task = task::Executor::new();
+        let net = net::NetworkRuntime::new(rand.clone(), task.time_handle().clone());
+        let fs = fs::FileSystemRuntime::new(rand.clone(), task.time_handle().clone());
+        Runtime {
             rand,
-            time,
-            executor,
+            task,
             net,
-        })
+            fs,
+        }
+    }
+
+    pub fn handle(&self) -> Handle {
+        Handle {
+            rand: self.rand.clone(),
+            time: self.task.time_handle().clone(),
+            task: self.task.handle().clone(),
+            net: self.net.handle().clone(),
+            fs: self.fs.handle().clone(),
+        }
+    }
+
+    pub fn local_handle(&self, addr: SocketAddr) -> LocalHandle {
+        LocalHandle {
+            rand: self.rand.clone(),
+            time: self.task.time_handle().clone(),
+            task: self.task.handle().local_handle(addr),
+            net: self.net.handle().local_handle(addr),
+            fs: self.fs.handle().local_handle(addr),
+        }
     }
 
     pub fn block_on<F: Future>(&self, future: F) -> F::Output {
-        self.executor.block_on(future)
+        let _guard = crate::context::enter(self.handle());
+        self.task.block_on(future)
     }
 }
 
+#[derive(Clone)]
+pub struct LocalHandle {
+    pub rand: rand::RandomHandle,
+    pub time: time::TimeHandle,
+    pub task: task::TaskLocalHandle,
+    pub net: net::NetworkLocalHandle,
+    pub fs: fs::FileSystemLocalHandle,
+}
 
+impl LocalHandle {
+    pub fn spawn<F>(&self, future: F) -> async_task::Task<F::Output>
+    where
+        F: Future + Send + 'static,
+        F::Output: Send + 'static,
+    {
+        self.task.spawn(future)
+    }
+}
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::Runtime;
-
-    #[test]
-    fn connect() {
-        env_logger::init();
-
-        let rt = Runtime::new().unwrap();
-        let addr1 = "0.0.0.1:1".parse().unwrap();
-        let addr2 = "0.0.0.2:1".parse().unwrap();
-        let host1 = rt.net.handle(addr1);
-        let host2 = rt.net.handle(addr2);
-
-        rt.block_on(async move {
-            host1.send_to(addr2, 1, &[1]).await.unwrap();
-            let mut buf = vec![0; 0x10];
-            let (len, tag, from) = host2.recv_from(&mut buf).await.unwrap();
-            assert_eq!(len, 1);
-            assert_eq!(tag, 1);
-            assert_eq!(from, addr1);
-        });
+impl Handle {
+    pub fn current() -> Self {
+        context::current().expect("Handle should be there")
     }
 }

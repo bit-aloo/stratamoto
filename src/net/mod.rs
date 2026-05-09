@@ -7,7 +7,6 @@ use std::{
 use log::trace;
 
 use crate::{
-    executor::Spawner,
     net::network::{Config, Message, Network},
     rand::RandomHandle,
     time::TimeHandle,
@@ -16,28 +15,39 @@ use crate::{
 mod network;
 
 pub struct NetworkRuntime {
-    network: Arc<Mutex<Network>>,
+    handle: NetworkHandle,
 }
 
 #[derive(Clone)]
-pub struct NetworkHandle {
+pub struct NetworkLocalHandle {
     network: Arc<Mutex<Network>>,
     addr: SocketAddr,
     receiver: async_channel::Receiver<Message>,
 }
 
 impl NetworkRuntime {
-    pub fn new(rand: RandomHandle, time: TimeHandle, spawner: Spawner) -> Self {
+    pub fn new(rand: RandomHandle, time: TimeHandle) -> Self {
         let config = Config::default();
-        let network = Network::new(rand, time, spawner, config);
-        NetworkRuntime {
-            network: Arc::new(Mutex::new(network)),
-        }
+        let handle = NetworkHandle {
+            network: Arc::new(Mutex::new(Network::new(rand, time, config))),
+        };
+        NetworkRuntime { handle }
     }
 
-    pub fn handle(&self, addr: SocketAddr) -> NetworkHandle {
-        let receiver = self.network.lock().unwrap().insert(addr);
-        NetworkHandle {
+    pub fn handle(&self) -> &NetworkHandle {
+        &self.handle
+    }
+}
+
+#[derive(Clone)]
+pub struct NetworkHandle {
+    network: Arc<Mutex<Network>>,
+}
+
+impl NetworkHandle {
+    pub fn local_handle(&self, addr: SocketAddr) -> NetworkLocalHandle {
+        let receiver = self.network.lock().unwrap().get(addr);
+        NetworkLocalHandle {
             network: self.network.clone(),
             addr,
             receiver,
@@ -45,7 +55,11 @@ impl NetworkRuntime {
     }
 }
 
-impl NetworkHandle {
+impl NetworkLocalHandle {
+    pub fn current() -> Self {
+        crate::context::net_local_handle()
+    }
+
     pub async fn send_to(&self, dst: SocketAddr, tag: u64, data: &[u8]) -> io::Result<()> {
         self.network.lock().unwrap().send(self.addr, dst, tag, data);
         Ok(())

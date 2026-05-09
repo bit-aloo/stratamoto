@@ -5,10 +5,11 @@ edition = "2024"
 
 [dependencies]
 async-channel = "2.5.0"
+async-task = "4.7.1"
 bytes = "1.11.1"
+futures = "0.3.32"
 log = "0.4.29"
 rand = "0.10.1"
-tokio = { version = "1.52.3", features = ["rt", "sync", "time", "test-util"] }
 
 [dev-dependencies]
 env_logger = "0.11.10"
