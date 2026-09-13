@@ -12,6 +12,7 @@ async-task = "4.7.1"
 bytes = "1.11.1"
 futures = "0.3.32"
 log = "0.4.29"
+postcard = { version = "1.1.3", features = ["alloc"], default-features = false }
 rand = "0.10.1"
 serde = { version = "1.0.228", features = ["derive"] }
 stratum-core = "0.5.1"
@@ -21,3 +22,4 @@ env_logger = "0.11.10"
 deterministic-simulator = { path = "crates/deterministic-simulator" }
 stratamoto = { path = "crates/stratamoto" }
 stratamoto-ir = { path = "crates/stratamoto-ir" }
+stratamoto-scenarios = { path = "crates/stratamoto-scenarios" }

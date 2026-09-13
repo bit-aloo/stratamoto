@@ -1,0 +1,15 @@
+[package]
+name = "stratamoto-scenarios"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+stratamoto.workspace = true
+stratamoto-ir.workspace = true
+postcard.workspace = true
+env_logger.workspace = true
+log.workspace = true
+
+[[bin]]
+name = "setup_connection"
+path = "bin/setup_connection.rs"
