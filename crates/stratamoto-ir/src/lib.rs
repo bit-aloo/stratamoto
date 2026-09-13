@@ -1,6 +1,7 @@
 pub mod builder;
 pub mod compiler;
 pub mod errors;
+pub mod generators;
 pub mod instruction;
 pub mod operation;
 pub mod variable;
