@@ -13,5 +13,9 @@ bytes = "1.11.1"
 futures = "0.3.32"
 log = "0.4.29"
 rand = "0.10.1"
+serde = { version = "1.0.228", features = ["derive"] }
 
 env_logger = "0.11.10"
+
+deterministic-simulator = { path = "crates/deterministic-simulator" }
+stratamoto-ir = { path = "crates/stratamoto-ir" }
