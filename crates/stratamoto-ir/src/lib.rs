@@ -3,6 +3,7 @@ pub mod compiler;
 pub mod errors;
 pub mod generators;
 pub mod instruction;
+pub mod mutators;
 pub mod operation;
 pub mod variable;
 
@@ -56,25 +57,53 @@ impl Program {
 
     /// Drop nop instructions, renumbering the inputs that referred to later variables.
     pub fn remove_nops(&mut self) {
+        let remove: Vec<bool> = self
+            .instructions
+            .iter()
+            .map(|i| matches!(i.operation, Operation::Nop { .. }))
+            .collect();
+        *self = self.without(&remove);
+    }
+
+    /// Drop the marked instructions, renumbering the inputs of those that remain.
+    ///
+    /// Inputs that referred to a dropped instruction's variables are left pointing at
+    /// whatever took their place, so the result still has to be validated.
+    #[must_use]
+    pub fn without(&self, remove: &[bool]) -> Program {
         let mut mapping = Vec::new();
         let mut kept = 0;
 
-        for instruction in &mut self.instructions {
-            let outputs = instruction.operation.num_outputs() + instruction.operation.num_inner_outputs();
-            let is_nop = matches!(instruction.operation, Operation::Nop { .. });
+        for (index, instruction) in self.instructions.iter().enumerate() {
+            let outputs =
+                instruction.operation.num_outputs() + instruction.operation.num_inner_outputs();
+            let dropped = remove.get(index).copied().unwrap_or(false);
             for _ in 0..outputs {
                 mapping.push(kept);
-                if !is_nop {
+                if !dropped {
                     kept += 1;
                 }
             }
-            for input in &mut instruction.inputs {
-                *input = mapping[*input];
-            }
         }
 
-        self.instructions
-            .retain(|i| !matches!(i.operation, Operation::Nop { .. }));
+        let instructions = self
+            .instructions
+            .iter()
+            .enumerate()
+            .filter(|(index, _)| !remove.get(*index).copied().unwrap_or(false))
+            .map(|(_, instruction)| {
+                let mut instruction = instruction.clone();
+                for input in &mut instruction.inputs {
+                    *input = mapping[*input];
+                }
+                instruction
+            })
+            .collect();
+
+        Program {
+            context: self.context.clone(),
+            instructions,
+        }
     }
 }
 

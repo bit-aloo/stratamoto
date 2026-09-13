@@ -54,9 +54,20 @@ impl ProgramBuilder {
     }
 
     pub fn from_program(program: Program) -> Result<Self, ProgramValidationError> {
-        let mut builder = Self::new(program.context);
-        for instruction in program.instructions {
-            builder.append(instruction)?;
+        Self::from_prefix(program.context, &program.instructions)
+    }
+
+    /// Rebuild the state a program is in after the given instructions.
+    ///
+    /// Scopes the prefix leaves open stay open, which is what lets a mutator ask what is in
+    /// scope at the point it is rewriting.
+    pub fn from_prefix(
+        context: ProgramContext,
+        instructions: &[Instruction],
+    ) -> Result<Self, ProgramValidationError> {
+        let mut builder = Self::new(context);
+        for instruction in instructions {
+            builder.append(instruction.clone())?;
         }
         Ok(builder)
     }
