@@ -1,0 +1,13 @@
+[package]
+name = "stratamoto-cli"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+stratamoto-ir.workspace = true
+postcard.workspace = true
+rand.workspace = true
+
+[[bin]]
+name = "stratamoto"
+path = "src/main.rs"

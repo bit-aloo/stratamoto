@@ -1344,6 +1344,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "stratamoto-cli"
+version = "0.1.0"
+dependencies = [
+ "postcard",
+ "rand 0.10.1",
+ "stratamoto-ir",
+]
+
+[[package]]
 name = "stratamoto-ir"
 version = "0.1.0"
 dependencies = [
