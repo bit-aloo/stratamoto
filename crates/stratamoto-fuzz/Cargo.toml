@@ -1,0 +1,17 @@
+[package]
+name = "stratamoto-fuzz"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+stratamoto-ir.workspace = true
+stratamoto-scenarios.workspace = true
+stratamoto.workspace = true
+postcard.workspace = true
+rand.workspace = true
+log.workspace = true
+env_logger.workspace = true
+
+[[bin]]
+name = "stratamoto-fuzz"
+path = "src/main.rs"

@@ -22,4 +22,5 @@ env_logger = "0.11.10"
 deterministic-simulator = { path = "crates/deterministic-simulator" }
 stratamoto = { path = "crates/stratamoto" }
 stratamoto-ir = { path = "crates/stratamoto-ir" }
+stratamoto-fuzz = { path = "crates/stratamoto-fuzz" }
 stratamoto-scenarios = { path = "crates/stratamoto-scenarios" }

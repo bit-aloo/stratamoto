@@ -1353,6 +1353,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "stratamoto-fuzz"
+version = "0.1.0"
+dependencies = [
+ "env_logger",
+ "log",
+ "postcard",
+ "rand 0.10.1",
+ "stratamoto",
+ "stratamoto-ir",
+ "stratamoto-scenarios",
+]
+
+[[package]]
 name = "stratamoto-ir"
 version = "0.1.0"
 dependencies = [

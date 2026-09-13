@@ -81,11 +81,15 @@ impl Scenario<TestCase> for SetupConnectionScenario {
 
 /// A coarse summary of what a run did, used to tell a new behaviour from a repeat of one
 /// already in the corpus.
+///
+/// It is the set of distinct interactions a run produced, not how many of each: a program
+/// that opens the same session twice has not reached anywhere new, while one that draws an
+/// error a role has not returned before has.
 #[must_use]
 pub fn signature(execution: &Execution) -> u64 {
     use std::hash::{Hash, Hasher};
 
-    let mut sessions: Vec<_> = execution
+    let mut interactions: Vec<(usize, stratamoto_ir::Protocol, u8, u64)> = execution
         .sessions
         .values()
         .map(|session| {
@@ -94,21 +98,28 @@ pub fn signature(execution: &Execution) -> u64 {
                 .get(&session.connection)
                 .copied()
                 .unwrap_or(usize::MAX);
-            let response = match &session.response {
-                SetupResponse::Success { used_version, .. } => (0u8, *used_version as u64),
-                SetupResponse::Error { error_code, .. } => {
-                    (1u8, error_code.len() as u64)
-                }
-                SetupResponse::Unexpected { message_type } => (2u8, *message_type as u64),
-                SetupResponse::Silence => (3u8, 0),
+            let (kind, detail) = match &session.response {
+                SetupResponse::Success { used_version, .. } => (0u8, u64::from(*used_version)),
+                SetupResponse::Error { error_code, .. } => (1, hash(error_code)),
+                SetupResponse::Unexpected { message_type } => (2, u64::from(*message_type)),
+                SetupResponse::Silence => (3, 0),
             };
-            (role, session.protocol, response)
+            (role, session.protocol, kind, detail)
         })
         .collect();
-    sessions.sort();
+    interactions.sort();
+    interactions.dedup();
 
     let mut hasher = std::hash::DefaultHasher::new();
-    sessions.hash(&mut hasher);
-    execution.unsolicited.len().hash(&mut hasher);
+    interactions.hash(&mut hasher);
+    // Whether anything arrived unprompted, not how much of it.
+    (!execution.unsolicited.is_empty()).hash(&mut hasher);
+    hasher.finish()
+}
+
+fn hash<T: std::hash::Hash>(value: T) -> u64 {
+    use std::hash::Hasher;
+    let mut hasher = std::hash::DefaultHasher::new();
+    value.hash(&mut hasher);
     hasher.finish()
 }
