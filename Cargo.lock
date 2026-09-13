@@ -145,6 +145,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d0a5c400df2834b80a4c3327b3aad3a4c4cd4de0629063962b03235697506a28"
 
 [[package]]
+name = "deterministic-simulator"
+version = "0.1.0"
+dependencies = [
+ "async-channel",
+ "async-task",
+ "bytes",
+ "env_logger",
+ "futures",
+ "log",
+ "rand",
+]
+
+[[package]]
 name = "env_filter"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -567,19 +580,6 @@ name = "slab"
 version = "0.4.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0c790de23124f9ab44544d7ac05d60440adc586479ce501c1d6d7da3cd8c9cf5"
-
-[[package]]
-name = "sv2-sim"
-version = "0.1.0"
-dependencies = [
- "async-channel",
- "async-task",
- "bytes",
- "env_logger",
- "futures",
- "log",
- "rand",
-]
 
 [[package]]
 name = "syn"

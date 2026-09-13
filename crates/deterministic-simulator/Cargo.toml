@@ -1,0 +1,15 @@
+[package]
+name = "deterministic-simulator"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+async-channel.workspace = true
+async-task.workspace = true
+bytes.workspace = true
+futures.workspace = true
+log.workspace = true
+rand.workspace = true
+
+[dev-dependencies]
+env_logger.workspace = true
