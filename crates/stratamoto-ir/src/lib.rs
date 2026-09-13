@@ -3,6 +3,7 @@ pub mod compiler;
 pub mod errors;
 pub mod generators;
 pub mod instruction;
+pub mod minimizers;
 pub mod mutators;
 pub mod operation;
 pub mod variable;
