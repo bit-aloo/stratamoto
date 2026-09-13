@@ -55,23 +55,39 @@ impl Deployment {
     }
 
     /// Open a connection from the harness to a role.
+    ///
+    /// Returns `None` when the connection index is past what the deployment can address.
     #[must_use]
-    pub fn connect(&self, connection: usize, role: usize) -> Connection {
+    pub fn connect(&self, connection: usize, role: usize) -> Option<Connection> {
+        if connection >= MAX_ADDRESSES || role >= self.roles.len() {
+            return None;
+        }
+        Some(self.connect_unchecked(connection, role))
+    }
+
+    fn connect_unchecked(&self, connection: usize, role: usize) -> Connection {
         let handle = self.runtime.local_handle(harness_address(connection));
         Connection::outbound(handle.net.clone(), role_address(role))
     }
 }
 
+/// The most roles or connections a deployment can address.
+///
+/// Each gets its own address out of a /16, so that frames from different connections never
+/// share an inbox.
+pub const MAX_ADDRESSES: usize = u16::MAX as usize;
+
 fn role_address(role: usize) -> SocketAddr {
-    SocketAddr::new(
-        IpAddr::V4(Ipv4Addr::new(10, 0, 0, role as u8 + 1)),
-        SV2_PORT,
-    )
+    address(10, 0, role)
 }
 
 fn harness_address(connection: usize) -> SocketAddr {
-    SocketAddr::new(
-        IpAddr::V4(Ipv4Addr::new(10, 1, 0, connection as u8 + 1)),
-        SV2_PORT,
-    )
+    address(10, 1, connection)
+}
+
+fn address(a: u8, b: u8, index: usize) -> SocketAddr {
+    assert!(index < MAX_ADDRESSES, "index {index} exceeds MAX_ADDRESSES");
+    let index = index as u16 + 1;
+    let [high, low] = index.to_be_bytes();
+    SocketAddr::new(IpAddr::V4(Ipv4Addr::new(a, b, high, low)), SV2_PORT)
 }

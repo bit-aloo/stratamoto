@@ -53,7 +53,11 @@ pub fn run(deployment: &Deployment, program: &CompiledProgram) -> Execution {
         for action in &program.actions {
             match action {
                 Action::Connect { connection, role } => {
-                    connections.insert(*connection, deployment.connect(*connection, *role));
+                    let Some(link) = deployment.connect(*connection, *role) else {
+                        log::debug!("cannot address connection {connection} to role {role}");
+                        continue;
+                    };
+                    connections.insert(*connection, link);
                     execution.connection_roles.insert(*connection, *role);
                 }
 
