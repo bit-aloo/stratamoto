@@ -79,6 +79,12 @@ impl NetworkLocalHandle {
         Ok((msg.data, msg.tag, msg.from))
     }
 
+    /// Take a message that has already been delivered, without waiting for one.
+    pub fn try_recv(&self) -> Option<(Bytes, u64, SocketAddr)> {
+        let msg = self.receiver.try_recv().ok()?;
+        Some((msg.data, msg.tag, msg.from))
+    }
+
     pub async fn recv_from(&self, data: &mut [u8]) -> io::Result<(usize, u64, SocketAddr)> {
         let msg = self.receiver.recv().await.unwrap();
         let len = data.len().min(msg.data.len());

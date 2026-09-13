@@ -1,5 +1,5 @@
 use stratamoto::{
-    deployment::Deployment,
+    deployment::SimulatedDeployment,
     error::{Error, Result},
     oracle::{Oracle, OracleResult, SetupConnectionOracle},
     roles::RoleConfig,
@@ -57,7 +57,7 @@ impl SetupConnectionScenario {
     /// Run a test case and hand back what the deployment did, for a caller that wants more
     /// than a pass or fail.
     pub fn execute(&self, testcase: &TestCase) -> (Execution, ScenarioResult) {
-        let deployment = Deployment::new(self.seed, roles());
+        let deployment = SimulatedDeployment::new(self.seed, roles());
         let execution = runner::run(&deployment, &testcase.program);
 
         let oracle = SetupConnectionOracle;

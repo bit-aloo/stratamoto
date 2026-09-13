@@ -103,6 +103,13 @@ impl Connection {
         Ok(())
     }
 
+    /// Take a frame that has already been delivered, without waiting for one.
+    pub async fn try_recv(&mut self) -> Option<Frame> {
+        let (bytes, _, from) = self.net.try_recv()?;
+        self.peer = Some(from);
+        Sv2Frame::from_bytes(bytes.to_vec()).ok().map(Frame)
+    }
+
     /// Await the next frame, or give up after `timeout`.
     pub async fn recv_timeout(&mut self, timeout: Duration) -> Result<Frame> {
         match deterministic_simulator::time::timeout(timeout, self.net.recv()).await {

@@ -1,7 +1,7 @@
 use stratamoto_ir::compiler::{CompiledProgram, SetupConnectionSpec};
 
 use crate::{
-    deployment::Deployment,
+    transport::Deployment,
     roles::{RoleConfig, upstream::ERROR_CODE_PROTOCOL_VERSION_MISMATCH, protocol_of},
     runner::{Execution, SetupResponse},
 };
@@ -13,9 +13,9 @@ pub enum OracleResult {
 
 /// Checks an execution against a property the protocol requires of any implementation.
 pub trait Oracle {
-    fn evaluate(
+    fn evaluate<D: Deployment>(
         &self,
-        deployment: &Deployment,
+        deployment: &D,
         program: &CompiledProgram,
         execution: &Execution,
     ) -> OracleResult;
@@ -30,9 +30,9 @@ pub trait Oracle {
 pub struct SetupConnectionOracle;
 
 impl Oracle for SetupConnectionOracle {
-    fn evaluate(
+    fn evaluate<D: Deployment>(
         &self,
-        deployment: &Deployment,
+        deployment: &D,
         program: &CompiledProgram,
         execution: &Execution,
     ) -> OracleResult {
