@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 ///
 /// Mirrors the `protocol` field of `SetupConnection`, but is kept independent of the
 /// wire types so that the IR stays serializable and implementation agnostic.
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Protocol {
     Mining,
     JobDeclaration,

@@ -1,7 +1,7 @@
 use stratum_core::{
     common_messages_sv2::{
         ERROR_CODE_SETUP_CONNECTION_UNSUPPORTED_FEATURE_FLAGS,
-        ERROR_CODE_SETUP_CONNECTION_UNSUPPORTED_PROTOCOL, Protocol, SetupConnection,
+        ERROR_CODE_SETUP_CONNECTION_UNSUPPORTED_PROTOCOL, SetupConnection,
         SetupConnectionError, SetupConnectionSuccess,
     },
     parsers_sv2::{AnyMessage, CommonMessages},
