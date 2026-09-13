@@ -1,0 +1,10 @@
+[package]
+name = "stratamoto"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+deterministic-simulator.workspace = true
+stratamoto-ir.workspace = true
+stratum-core.workspace = true
+log.workspace = true
