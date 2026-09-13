@@ -1,11 +1,11 @@
 use std::net::SocketAddr;
 
 mod context;
-mod fs;
-mod net;
-mod rand;
-mod task;
-mod time;
+pub mod fs;
+pub mod net;
+pub mod rand;
+pub mod task;
+pub mod time;
 
 pub struct Runtime {
     rand: rand::RandomHandle,

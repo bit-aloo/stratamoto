@@ -4,6 +4,8 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+use bytes::Bytes;
+
 use log::trace;
 
 use crate::{
@@ -63,6 +65,18 @@ impl NetworkLocalHandle {
     pub async fn send_to(&self, dst: SocketAddr, tag: u64, data: &[u8]) -> io::Result<()> {
         self.network.lock().unwrap().send(self.addr, dst, tag, data);
         Ok(())
+    }
+
+    pub async fn recv(&self) -> io::Result<(Bytes, u64, SocketAddr)> {
+        let msg = self.receiver.recv().await.unwrap();
+        trace!(
+            "recv: {} <- {}, tag = {}, len = {}",
+            self.addr,
+            msg.from,
+            msg.tag,
+            msg.data.len()
+        );
+        Ok((msg.data, msg.tag, msg.from))
     }
 
     pub async fn recv_from(&self, data: &mut [u8]) -> io::Result<(usize, u64, SocketAddr)> {
