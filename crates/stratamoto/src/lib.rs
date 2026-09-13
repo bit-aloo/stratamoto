@@ -1,6 +1,7 @@
 pub mod connection;
 pub mod deployment;
 pub mod error;
+pub mod noise;
 pub mod oracle;
 pub mod roles;
 pub mod runner;

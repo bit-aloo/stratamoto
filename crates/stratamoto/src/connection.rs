@@ -14,7 +14,7 @@ const CHANNEL_MSG_MASK: u16 = 0b1000_0000_0000_0000;
 const HEADER_SIZE: usize = 6;
 
 /// A received frame, owning the bytes its message borrows from.
-pub struct Frame(Sv2Frame<AnyMessage<'static>, Vec<u8>>);
+pub struct Frame(pub(crate) Sv2Frame<AnyMessage<'static>, Vec<u8>>);
 
 impl Frame {
     pub fn header(&self) -> Result<Header> {

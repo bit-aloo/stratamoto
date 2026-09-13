@@ -4,11 +4,13 @@ use std::fmt;
 pub enum Error {
     Io(std::io::Error),
     Framing(&'static str),
-    Codec(stratum_core::framing_sv2::Error),
+    Framing2(stratum_core::framing_sv2::Error),
+    Codec(stratum_core::codec_sv2::Error),
     Parser(stratum_core::parsers_sv2::ParserError),
     Binary(stratum_core::binary_sv2::Error),
     UnexpectedMessage(u8),
     Input(String),
+    Noise(String),
     Timeout,
 }
 
@@ -17,11 +19,13 @@ impl fmt::Display for Error {
         match self {
             Error::Io(e) => write!(f, "io: {e}"),
             Error::Framing(e) => write!(f, "framing: {e}"),
-            Error::Codec(e) => write!(f, "framing: {e:?}"),
+            Error::Framing2(e) => write!(f, "framing: {e:?}"),
+            Error::Codec(e) => write!(f, "codec: {e:?}"),
             Error::Parser(e) => write!(f, "parser: {e:?}"),
             Error::Binary(e) => write!(f, "binary: {e:?}"),
             Error::UnexpectedMessage(t) => write!(f, "unexpected message type 0x{t:02x}"),
             Error::Input(e) => write!(f, "input: {e}"),
+            Error::Noise(e) => write!(f, "noise: {e}"),
             Error::Timeout => write!(f, "timed out"),
         }
     }
@@ -37,6 +41,12 @@ impl From<std::io::Error> for Error {
 
 impl From<stratum_core::framing_sv2::Error> for Error {
     fn from(e: stratum_core::framing_sv2::Error) -> Self {
+        Error::Framing2(e)
+    }
+}
+
+impl From<stratum_core::codec_sv2::Error> for Error {
+    fn from(e: stratum_core::codec_sv2::Error) -> Self {
         Error::Codec(e)
     }
 }

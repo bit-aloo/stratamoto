@@ -8,3 +8,6 @@ deterministic-simulator.workspace = true
 stratamoto-ir.workspace = true
 stratum-core.workspace = true
 log.workspace = true
+
+[dev-dependencies]
+bs58 = { version = "0.5", features = ["check"] }
