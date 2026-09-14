@@ -78,6 +78,33 @@ impl Oracle for SetupConnectionOracle {
     }
 }
 
+/// Checks that the deployment is still serving after a program has run.
+///
+/// A conformant role stays up no matter what a client sends it: a malformed or out of order
+/// message is the client's problem, never grounds to stop serving every other client. A role
+/// that is no longer reachable after a run has failed this, whether it crashed or shut itself
+/// down.
+pub struct CrashOracle;
+
+impl Oracle for CrashOracle {
+    fn evaluate<D: Deployment>(
+        &self,
+        deployment: &D,
+        _program: &CompiledProgram,
+        _execution: &Execution,
+    ) -> OracleResult {
+        if deployment.is_alive() {
+            OracleResult::Pass
+        } else {
+            OracleResult::Fail("the deployment stopped serving".to_string())
+        }
+    }
+
+    fn name(&self) -> &'static str {
+        "CrashOracle"
+    }
+}
+
 /// Why `response` is not an answer to `spec` that a role configured as `config` may give.
 pub fn check(
     config: &RoleConfig,

@@ -2141,12 +2141,14 @@ dependencies = [
 name = "stratamoto-targets"
 version = "0.1.0"
 dependencies = [
+ "env_logger",
  "log",
  "pool_sv2",
  "stratamoto",
  "stratamoto-ir",
  "stratum-apps",
  "tokio",
+ "tracing-subscriber",
 ]
 
 [[package]]

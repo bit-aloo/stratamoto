@@ -12,3 +12,5 @@ log.workspace = true
 
 [dev-dependencies]
 stratamoto-ir.workspace = true
+env_logger.workspace = true
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }

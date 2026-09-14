@@ -1,7 +1,7 @@
 use stratamoto::{
     deployment::SimulatedDeployment,
     error::{Error, Result},
-    oracle::{Oracle, OracleResult, SetupConnectionOracle},
+    oracle::{CrashOracle, Oracle, OracleResult, SetupConnectionOracle},
     roles::RoleConfig,
     runner::{self, Execution, SetupResponse},
     scenario::{Scenario, ScenarioInput, ScenarioResult},
@@ -60,11 +60,7 @@ impl SetupConnectionScenario {
         let deployment = SimulatedDeployment::new(self.seed, roles());
         let execution = runner::run(&deployment, &testcase.program);
 
-        let oracle = SetupConnectionOracle;
-        let result = match oracle.evaluate(&deployment, &testcase.program, &execution) {
-            OracleResult::Pass => ScenarioResult::Ok,
-            OracleResult::Fail(e) => ScenarioResult::Fail(format!("{}: {e}", oracle.name())),
-        };
+        let result = evaluate(&deployment, &testcase.program, &execution);
         (execution, result)
     }
 }
@@ -77,6 +73,26 @@ impl Scenario<TestCase> for SetupConnectionScenario {
     fn run(&mut self, testcase: TestCase) -> ScenarioResult {
         self.execute(&testcase).1
     }
+}
+
+/// Run the scenario's oracles in order, reporting the first violation.
+///
+/// Conformance first, then liveness: a crash is worth knowing about however the messages
+/// looked, so it is checked even when the answers were within the specification.
+pub fn evaluate<D: stratamoto::transport::Deployment>(
+    deployment: &D,
+    program: &stratamoto_ir::compiler::CompiledProgram,
+    execution: &Execution,
+) -> ScenarioResult {
+    let conformance = SetupConnectionOracle;
+    if let OracleResult::Fail(e) = conformance.evaluate(deployment, program, execution) {
+        return ScenarioResult::Fail(format!("{}: {e}", conformance.name()));
+    }
+    let crash = CrashOracle;
+    if let OracleResult::Fail(e) = crash.evaluate(deployment, program, execution) {
+        return ScenarioResult::Fail(format!("{}: {e}", crash.name()));
+    }
+    ScenarioResult::Ok
 }
 
 /// A coarse summary of what a run did, used to tell a new behaviour from a repeat of one

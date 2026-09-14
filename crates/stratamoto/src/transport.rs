@@ -36,4 +36,13 @@ pub trait Deployment {
 
     /// Let the deployment run for a while without the harness doing anything.
     fn advance_time(&self, duration: std::time::Duration);
+
+    /// Whether the deployment is still serving, i.e. a fresh connection can still be opened.
+    ///
+    /// The simulated roles cannot stop, so the default is always alive; a real deployment
+    /// overrides this to probe the role, which is how a crash or a self inflicted shutdown is
+    /// caught after the run that caused it.
+    fn is_alive(&self) -> bool {
+        true
+    }
 }

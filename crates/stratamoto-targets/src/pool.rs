@@ -34,6 +34,10 @@ const CERTIFICATE_VALIDITY_SECS: u64 = 3600;
 /// The pool looks for its first template once a second, so readiness takes at least that long.
 const STARTUP_TIMEOUT: Duration = Duration::from_secs(30);
 const IO_TIMEOUT: Duration = Duration::from_secs(10);
+/// A pool that is up answers a handshake immediately, so a liveness probe waits only briefly.
+const LIVENESS_TIMEOUT: Duration = Duration::from_secs(2);
+/// How long a connection to an already running pool is retried through transient starvation.
+const CONNECT_RETRY_BUDGET: Duration = Duration::from_secs(3);
 
 /// sv2-apps' pool, running in process against a Template Provider the harness plays.
 ///
@@ -116,9 +120,13 @@ impl Deployment for PoolDeployment {
         if role >= self.roles.len() {
             return None;
         }
-        let socket = TcpStream::connect_timeout(&self.address, IO_TIMEOUT).ok()?;
-        NoiseTransport::connect(socket, IO_TIMEOUT)
-            .map_err(|e| log::debug!("handshake with the pool failed: {e}"))
+        // The pool runs on a shared runtime, so under connection churn a fresh accept can be
+        // momentarily starved and refuse the socket. That is a transient of talking to a real
+        // role, so it is retried briefly. The long budget belongs to startup alone: a pool
+        // that is serving accepts at once, and waiting 30 seconds on one that has stopped
+        // would cost that much on every connection of every later run.
+        dial(self.address, CONNECT_RETRY_BUDGET)
+            .map_err(|e| log::debug!("could not connect to the pool: {e}"))
             .ok()
     }
 
@@ -133,6 +141,27 @@ impl Deployment for PoolDeployment {
     fn advance_time(&self, duration: Duration) {
         thread::sleep(duration);
     }
+
+    fn is_alive(&self) -> bool {
+        // A short budget: a live pool answers a handshake at once, and a pool that shut itself
+        // down never will, so there is nothing to wait out.
+        dial(self.address, LIVENESS_TIMEOUT).is_ok()
+    }
+}
+
+/// Open one Noise connection to the pool, retrying transient starvation within `budget`.
+fn dial(address: SocketAddr, budget: Duration) -> Result<NoiseTransport, stratamoto::error::Error> {
+    let deadline = Instant::now() + budget;
+    loop {
+        let attempt = TcpStream::connect_timeout(&address, IO_TIMEOUT)
+            .map_err(stratamoto::error::Error::Io)
+            .and_then(|socket| NoiseTransport::connect(socket, IO_TIMEOUT));
+        match attempt {
+            Ok(transport) => return Ok(transport),
+            Err(_) if Instant::now() < deadline => thread::sleep(Duration::from_millis(50)),
+            Err(e) => return Err(e),
+        }
+    }
 }
 
 impl Drop for PoolDeployment {
@@ -144,19 +173,7 @@ impl Drop for PoolDeployment {
 /// The pool binds before its first template arrives but only accepts afterwards, so a TCP
 /// connection going through says nothing. A completed handshake does.
 fn wait_until_accepting(address: SocketAddr) -> Result<(), Error> {
-    let deadline = Instant::now() + STARTUP_TIMEOUT;
-    loop {
-        let attempt = TcpStream::connect_timeout(&address, IO_TIMEOUT)
-            .map_err(stratamoto::error::Error::Io)
-            .and_then(|socket| NoiseTransport::connect(socket, Duration::from_secs(2)));
-        match attempt {
-            Ok(_) => return Ok(()),
-            Err(_) if Instant::now() < deadline => thread::sleep(Duration::from_millis(250)),
-            Err(e) => {
-                return Err(Error::Startup(format!(
-                    "the pool never accepted a connection: {e}"
-                )));
-            }
-        }
-    }
+    dial(address, STARTUP_TIMEOUT)
+        .map(|_| ())
+        .map_err(|e| Error::Startup(format!("the pool never accepted a connection: {e}")))
 }
