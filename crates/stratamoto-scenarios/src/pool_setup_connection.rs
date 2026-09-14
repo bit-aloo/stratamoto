@@ -1,6 +1,5 @@
 use stratamoto::{
     error::{Error, Result},
-    oracle::{Oracle, OracleResult, SetupConnectionOracle},
     runner::{self, Execution},
     scenario::{Scenario, ScenarioResult},
     transport::Deployment,
@@ -28,6 +27,12 @@ impl PoolSetupConnectionScenario {
         self.deployment.num_roles()
     }
 
+    /// Whether the pool is still serving.
+    #[must_use]
+    pub fn is_alive(&self) -> bool {
+        self.deployment.is_alive()
+    }
+
     pub fn execute(&self, testcase: &TestCase) -> (Execution, ScenarioResult) {
         // A program written for more roles than the pool deployment has would open connections
         // to nothing, which is a mismatch with the input rather than a finding about the pool.
@@ -36,12 +41,7 @@ impl PoolSetupConnectionScenario {
         }
 
         let execution = runner::run(&self.deployment, &testcase.program);
-
-        let oracle = SetupConnectionOracle;
-        let result = match oracle.evaluate(&self.deployment, &testcase.program, &execution) {
-            OracleResult::Pass => ScenarioResult::Ok,
-            OracleResult::Fail(e) => ScenarioResult::Fail(format!("{}: {e}", oracle.name())),
-        };
+        let result = crate::setup_connection::evaluate(&self.deployment, &testcase.program, &execution);
         (execution, result)
     }
 }

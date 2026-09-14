@@ -15,4 +15,13 @@ pub enum Outcome {
 pub trait Target {
     fn run(&mut self, program: &Program) -> Outcome;
     fn name(&self) -> &'static str;
+
+    /// Whether the target can still be run against.
+    ///
+    /// Simulated roles cannot stop, so the default is always alive. A real one that has
+    /// crashed or shut itself down answers `false`, and the campaign ends there: every later
+    /// run would fail for the same reason and say nothing new.
+    fn is_alive(&self) -> bool {
+        true
+    }
 }

@@ -26,10 +26,14 @@ pub struct Stats {
     pub failures: u64,
 }
 
-/// A crash the fuzzer found, already reduced.
+/// A crash the fuzzer found, reduced unless the target died with it.
 pub struct Failure {
     pub program: Program,
     pub reason: String,
+    /// Whether the target stopped serving. Such a program is reported as it was run: with the
+    /// target down every candidate fails alike, so there is nothing for a minimizer to tell
+    /// apart.
+    pub killed_the_target: bool,
 }
 
 pub struct Fuzzer<T, R> {
@@ -117,8 +121,19 @@ impl<T: Target, R: RngExt> Fuzzer<T, R> {
             }
             Outcome::Fail(reason) => {
                 self.stats.failures += 1;
+                if !self.target.is_alive() {
+                    return Some(Failure {
+                        program: mutated,
+                        reason,
+                        killed_the_target: true,
+                    });
+                }
                 let program = self.minimize(mutated, &reason);
-                Some(Failure { program, reason })
+                Some(Failure {
+                    program,
+                    reason,
+                    killed_the_target: false,
+                })
             }
         }
     }
@@ -127,7 +142,12 @@ impl<T: Target, R: RngExt> Fuzzer<T, R> {
         let mut failures = Vec::new();
         for _ in 0..iterations {
             if let Some(failure) = self.run_one() {
+                let killed_the_target = failure.killed_the_target;
                 failures.push(failure);
+                if killed_the_target {
+                    log::warn!("the target stopped serving; ending the campaign");
+                    break;
+                }
             }
         }
         failures
