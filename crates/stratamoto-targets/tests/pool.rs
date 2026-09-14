@@ -101,18 +101,28 @@ fn the_real_pool_answers_setup_connection_within_the_specification() {
 }
 
 /// A found bug in sv2-apps' pool at the revision this harness tracks, kept as a runnable
-/// record. A single downstream sends a rejected SetupConnection and then a second frame on the
-/// same connection; the pool responds by cancelling its global shutdown token, which stops it
-/// serving every other downstream and its template receiver too. A rejected SetupConnection
-/// alone does not do this, so it is the second frame on a connection being torn down that
-/// escalates a per connection disconnect into a whole role shutdown.
+/// record.
 ///
-/// Ignored because it depends on the bug being present: if sv2-apps fixes it, the pool stays
-/// alive and this fails, which is the signal to update the record. Run with
-/// `cargo test -p stratamoto-targets --test pool -- --ignored`.
+/// When a rejected SetupConnection is answered, the pool sleeps one second before closing the
+/// connection, deliberately, to let the SetupConnection.Error reach the client first. A second
+/// frame that arrives on the connection during that window races the teardown, and on an
+/// unlucky interleaving a pool worker enters a busy loop at close to 100% of a core. The
+/// pegged worker starves the runtime, so fresh connections can no longer complete their Noise
+/// handshake and the pool stops serving every downstream. A rejected SetupConnection with no
+/// second frame never does this.
+///
+/// It is a livelock, not a clean shutdown, and it is a race: it fires on roughly half of
+/// attempts, so the trigger is repeated until the pool wedges or the budget runs out. The
+/// exact spinning loop is not pinned down here; what is established is the trigger (a second
+/// frame in the post error window), the effect (a worker at ~99% CPU, measured by sampling
+/// the busiest thread) and the consequence (fresh connections fail with EAGAIN).
+///
+/// Ignored because it depends on the bug being present: once sv2-apps fixes it the pool stays
+/// alive through every attempt and this fails, which is the signal to update the record. Run
+/// with `cargo test -p stratamoto-targets --test pool -- --ignored`.
 #[test]
-#[ignore = "documents an unfixed sv2-apps pool DoS"]
-fn a_second_setup_on_one_connection_shuts_the_whole_pool_down() {
+#[ignore = "documents an unfixed sv2-apps pool livelock"]
+fn a_second_frame_in_the_teardown_window_can_livelock_the_pool() {
     let deployment = PoolDeployment::start().expect("the pool starts against the harness' TP");
     assert!(deployment.is_alive(), "the pool serves before the program");
 
@@ -132,11 +142,13 @@ fn a_second_setup_on_one_connection_shuts_the_whole_pool_down() {
     }
     let program = Compiler::new().compile(&builder.finalize().unwrap()).unwrap();
 
-    let _ = runner::run(&deployment, &program);
-
-    // The pool has cancelled its global token; it no longer answers a fresh connection.
-    assert!(
-        !deployment.is_alive(),
-        "the pool still serves, so the DoS may have been fixed upstream"
-    );
+    // The race is about even, so a single run is not enough to rely on. Twenty attempts make a
+    // miss vanishingly unlikely while the bug is present, and all-healthy is the fix signal.
+    for _ in 0..20 {
+        let _ = runner::run(&deployment, &program);
+        if !deployment.is_alive() {
+            return;
+        }
+    }
+    panic!("the pool stayed alive through every attempt, so the livelock may have been fixed");
 }
