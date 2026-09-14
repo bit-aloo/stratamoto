@@ -1,4 +1,8 @@
-use std::{collections::HashMap, fmt, time::Duration};
+use std::{
+    collections::{HashMap, HashSet},
+    fmt,
+    time::Duration,
+};
 
 use serde::{Deserialize, Serialize};
 use stratum_core::{
@@ -66,6 +70,9 @@ pub enum Action {
         connection: ConnectionId,
         session: SessionId,
         protocol: Protocol,
+        /// Whether the `SetupConnection` was the first message on its connection, which is
+        /// the only one a server owes an answer to.
+        first_on_connection: bool,
     },
     AdvanceTime(Duration),
     /// Collect everything the deployment sent since the previous probe.
@@ -140,6 +147,8 @@ pub struct Compiler {
     metadata: CompiledMetadata,
     connections: usize,
     sessions: usize,
+    /// Connections something has already been sent on.
+    sent: HashSet<ConnectionId>,
 }
 
 impl Compiler {
@@ -149,8 +158,10 @@ impl Compiler {
     }
 
     pub fn compile(mut self, program: &Program) -> Result<CompiledProgram, CompilerError> {
-        // Connections that exist before the program runs are addressable via LoadConnection.
+        // Connections that exist before the program runs are addressable via LoadConnection,
+        // and are already set up, so nothing sent on them is a first message.
         self.connections = program.context.num_connections;
+        self.sent.extend(0..program.context.num_connections);
 
         for (index, instruction) in program.instructions.iter().enumerate() {
             self.compile_instruction(index, instruction)?;
@@ -262,6 +273,7 @@ impl Compiler {
 
             Operation::SendSetupConnection { protocol } => {
                 let connection = self.connection(inputs[0])?;
+                let first_on_connection = self.sent.insert(connection);
                 let spec = self.setup(inputs[1])?;
                 let payload = encode_setup_connection(&spec, inputs[1])?;
 
@@ -289,6 +301,7 @@ impl Compiler {
                         connection,
                         session,
                         protocol: *protocol,
+                        first_on_connection,
                     },
                 );
             }
@@ -299,6 +312,7 @@ impl Compiler {
             } => {
                 let connection = self.connection(inputs[0])?;
                 let payload = self.bytes(inputs[1])?;
+                self.sent.insert(connection);
                 self.push_action(
                     index,
                     Action::Send {

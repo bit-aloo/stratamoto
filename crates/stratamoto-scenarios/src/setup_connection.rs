@@ -89,7 +89,7 @@ impl Scenario<TestCase> for SetupConnectionScenario {
 pub fn signature(execution: &Execution) -> u64 {
     use std::hash::{Hash, Hasher};
 
-    let mut interactions: Vec<(usize, stratamoto_ir::Protocol, u8, u64)> = execution
+    let mut interactions: Vec<(usize, stratamoto_ir::Protocol, bool, u8, u64)> = execution
         .sessions
         .values()
         .map(|session| {
@@ -104,7 +104,7 @@ pub fn signature(execution: &Execution) -> u64 {
                 SetupResponse::Unexpected { message_type } => (2, u64::from(*message_type)),
                 SetupResponse::Silence => (3, 0),
             };
-            (role, session.protocol, kind, detail)
+            (role, session.protocol, session.first_on_connection, kind, detail)
         })
         .collect();
     interactions.sort();

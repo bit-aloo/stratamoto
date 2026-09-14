@@ -60,7 +60,9 @@ impl Oracle for SetupConnectionOracle {
                 return OracleResult::Fail(format!("session {id} is on unknown role {role}"));
             };
 
-            if let Err(violation) = check(config, spec, &session.response) {
+            if let Err(violation) =
+                check(config, spec, session.first_on_connection, &session.response)
+            {
                 return OracleResult::Fail(format!(
                     "role {role} answered {:?} to {spec:?}: {violation}",
                     session.response
@@ -80,8 +82,16 @@ impl Oracle for SetupConnectionOracle {
 pub fn check(
     config: &RoleConfig,
     spec: &SetupConnectionSpec,
+    first_on_connection: bool,
     response: &SetupResponse,
 ) -> Result<(), String> {
+    // SetupConnection MUST be the first message on a new connection, and it is that message the
+    // server MUST answer. One sent later is already the client's violation: the server may
+    // ignore it or close the connection, and nothing it does in reply is constrained.
+    if !first_on_connection {
+        return Ok(());
+    }
+
     let (used_version, flags) = match response {
         SetupResponse::Silence => {
             return Err(
