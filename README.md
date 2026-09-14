@@ -1,0 +1,108 @@
+# stratamoto
+
+A deterministic simulator and fuzzer for [Stratum V2](https://github.com/stratum-mining/sv2-spec)
+roles, built along the lines of [fuzzamoto](https://github.com/oss-garage/fuzzamoto).
+
+Test cases are not byte strings. They are programs in a typed intermediate
+representation, where the types record how one message depends on another: a share may only
+name a `job_id` that some channel the server opened actually announced, and a mining message
+may only be sent on a connection that was set up for mining. A mutator can rewrite anything it
+likes and still not fabricate a relationship the protocol does not allow, which is what
+separates this from feeding random bytes at a decoder.
+
+The same program runs against either simulated roles on a deterministic runtime, or against the
+real roles from [sv2-apps](https://github.com/stratum-mining/sv2-apps) over real sockets, and
+the same conformance checks apply to both.
+
+## Layout
+
+| crate | what it is |
+| --- | --- |
+| [`deterministic-simulator`](crates/deterministic-simulator) | the runtime: a seeded executor, clock, network and filesystem |
+| [`stratamoto-ir`](crates/stratamoto-ir) | the programs: typed variables, operations, builder, compiler, generators, mutators, minimizers |
+| [`stratamoto`](crates/stratamoto) | the harness: transports, deployments, the runner and the oracles |
+| [`stratamoto-targets`](crates/stratamoto-targets) | the real roles: sv2-apps' pool, against Bitcoin Core |
+| [`stratamoto-scenarios`](crates/stratamoto-scenarios) | one binary per scenario |
+| [`stratamoto-fuzz`](crates/stratamoto-fuzz) | the campaign: corpus, mutation loop, minimization |
+| [`stratamoto-cli`](crates/stratamoto-cli) | generating, printing and compiling programs by hand |
+
+A run goes: a **generator** builds a program through the **builder**, which rejects anything
+ill-typed; the **compiler** lowers it to actions; the **runner** carries those out against a
+**deployment**; the **oracles** judge what came back.
+
+## Getting started
+
+```sh
+cargo build
+cargo test
+```
+
+The simulated side needs nothing but a Rust toolchain (built with 1.98, edition 2024). Anything
+touching a real role additionally needs Bitcoin Core and `sv2-tp`; see
+[running against real roles](#running-against-real-roles).
+
+### Run one scenario
+
+```sh
+cargo build
+target/debug/stratamoto generate 7 3 | target/debug/stratamoto print          # read it
+target/debug/stratamoto generate 7 3 | STRATAMOTO_SEED=7 target/debug/setup_connection
+```
+
+A scenario binary takes a serialized program on stdin and exits non-zero when an oracle finds a
+violation, so a failing program can be replayed exactly.
+
+### Fuzz
+
+```sh
+target/debug/stratamoto-fuzz 2000 1                      # simulated roles
+STRATAMOTO_TARGET=pool target/debug/stratamoto-fuzz 60 1 ./failures   # sv2-apps' pool
+```
+
+Arguments are `[iterations] [seed] [failure directory]`. Failures are reduced before they are
+reported and, when a directory is given, written there as programs a scenario binary can replay.
+
+## Running against real roles
+
+`stratamoto-targets` starts sv2-apps' pool in process and feeds it from a real Bitcoin Core node
+with `sv2-tp` in front, reusing sv2-apps' own launchers. Templates therefore come from a node,
+not from us: a synthesized template only has to satisfy a decoder, so nothing built on one —
+a job, or a share against that job — would mean much.
+
+Those launchers look for their binaries in a `template-provider` directory beside the working
+directory and download them when they are missing. If you already have a copy, point at it and
+nothing is downloaded:
+
+```sh
+export STRATAMOTO_TEMPLATE_PROVIDER_CACHE=/path/to/sv2-apps/integration-tests/template-provider
+```
+
+Without it, a checkout of sv2-apps beside this one is found automatically.
+
+The node runs in regtest, where the target is low enough that a submitted share is also a block,
+which is what makes share submission observable at all.
+
+## A known upstream finding
+
+The suite has one ignored test, [`a_second_frame_in_the_teardown_window_can_livelock_the_pool`](crates/stratamoto-targets/tests/pool.rs).
+
+On a rejected `SetupConnection` the pool answers and then sleeps one second before closing the
+connection, deliberately, so the error reaches the client. A second frame arriving in that
+window races the teardown, and on an unlucky interleaving a pool worker spins at close to a full
+core: measured, the busiest thread burns 198 of 200 jiffies over two seconds that should be
+idle, while an idle pool sits at zero. The pegged worker starves the runtime and fresh
+connections fail their handshake.
+
+It is a livelock rather than a crash, and a race that fires about half the time, so the test
+repeats the trigger. It is ignored because it asserts a bug is present: when sv2-apps fixes it,
+the test fails, and that is the signal to update the record.
+
+## Environment
+
+| variable | what it does |
+| --- | --- |
+| `STRATAMOTO_SEED` | seed a scenario's simulator (default 0) |
+| `STRATAMOTO_INPUT` | read a scenario's program from a file instead of stdin |
+| `STRATAMOTO_TARGET` | `simulated` (default) or `pool` |
+| `STRATAMOTO_TEMPLATE_PROVIDER_CACHE` | where Bitcoin Core and `sv2-tp` already live |
+| `RUST_LOG` | harness logging; the real roles log through `tracing` |

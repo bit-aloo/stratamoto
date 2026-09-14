@@ -2,6 +2,7 @@
 name = "stratamoto-fuzz"
 version.workspace = true
 edition.workspace = true
+readme = "README.md"
 
 [dependencies]
 stratamoto-ir.workspace = true

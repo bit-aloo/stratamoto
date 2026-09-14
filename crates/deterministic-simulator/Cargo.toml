@@ -2,6 +2,7 @@
 name = "deterministic-simulator"
 version.workspace = true
 edition.workspace = true
+readme = "README.md"
 
 [dependencies]
 async-channel.workspace = true

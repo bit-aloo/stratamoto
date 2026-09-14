@@ -2,6 +2,7 @@
 name = "stratamoto"
 version.workspace = true
 edition.workspace = true
+readme = "README.md"
 
 [dependencies]
 deterministic-simulator.workspace = true

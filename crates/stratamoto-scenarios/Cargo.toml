@@ -2,6 +2,7 @@
 name = "stratamoto-scenarios"
 version.workspace = true
 edition.workspace = true
+readme = "README.md"
 
 [dependencies]
 stratamoto.workspace = true
