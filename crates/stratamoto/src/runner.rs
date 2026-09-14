@@ -103,10 +103,8 @@ pub fn run<D: Deployment>(deployment: &D, program: &CompiledProgram) -> Executio
 
             Action::Probe => {
                 for (id, link) in &mut connections {
-                    while let Ok(mut frame) = link.recv(Duration::ZERO) {
-                        if let Ok(header) = frame.header() {
-                            execution.unsolicited.push((*id, header.msg_type()));
-                        }
+                    while let Ok(frame) = link.recv(Duration::ZERO) {
+                        execution.unsolicited.push((*id, frame.header().msg_type()));
                     }
                 }
             }
@@ -126,7 +124,7 @@ fn await_setup_response<T: Transport>(link: &mut T) -> SetupResponse {
         }
     };
 
-    let message_type = frame.header().map(|h| h.msg_type()).unwrap_or_default();
+    let message_type = frame.header().msg_type();
     match frame.message() {
         Ok(AnyMessage::Common(CommonMessages::SetupConnectionSuccess(success))) => {
             SetupResponse::Success {

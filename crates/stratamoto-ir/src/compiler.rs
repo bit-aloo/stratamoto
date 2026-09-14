@@ -2,7 +2,7 @@ use std::{collections::HashMap, fmt, time::Duration};
 
 use serde::{Deserialize, Serialize};
 use stratum_core::{
-    binary_sv2::{GetSize, Serialize as Sv2Serialize, to_writer},
+    binary_sv2::{GetSize, Serialize as Sv2Serialize, Str0255, to_writer},
     common_messages_sv2::{MESSAGE_TYPE_SETUP_CONNECTION, SetupConnection},
 };
 
@@ -398,12 +398,6 @@ fn encode_setup_connection(
     spec: &SetupConnectionSpec,
     variable: usize,
 ) -> Result<Vec<u8>, CompilerError> {
-    let str0_255 = |s: &String| {
-        s.clone()
-            .try_into()
-            .map_err(|_| CompilerError::StringTooLong(variable))
-    };
-
     let message = SetupConnection {
         protocol: spec
             .protocol
@@ -413,12 +407,12 @@ fn encode_setup_connection(
         min_version: spec.min_version,
         max_version: spec.max_version,
         flags: spec.flags,
-        endpoint_host: str0_255(&spec.endpoint_host)?,
+        endpoint_host: str0_255(&spec.endpoint_host, variable)?,
         endpoint_port: spec.endpoint_port,
-        vendor: str0_255(&spec.vendor)?,
-        hardware_version: str0_255(&spec.hardware_version)?,
-        firmware: str0_255(&spec.firmware)?,
-        device_id: str0_255(&spec.device_id)?,
+        vendor: str0_255(&spec.vendor, variable)?,
+        hardware_version: str0_255(&spec.hardware_version, variable)?,
+        firmware: str0_255(&spec.firmware, variable)?,
+        device_id: str0_255(&spec.device_id, variable)?,
     };
 
     encode(message)
@@ -428,4 +422,10 @@ fn encode<T: Sv2Serialize + GetSize>(message: T) -> Result<Vec<u8>, CompilerErro
     let mut payload = vec![0u8; message.get_size()];
     to_writer(message, &mut payload).map_err(|e| CompilerError::Encoding(format!("{e:?}")))?;
     Ok(payload)
+}
+
+fn str0_255(value: &str, variable: usize) -> Result<Str0255<'_>, CompilerError> {
+    value
+        .try_into()
+        .map_err(|_| CompilerError::StringTooLong(variable))
 }

@@ -15,7 +15,8 @@ log = "0.4.29"
 postcard = { version = "1.1.3", features = ["alloc"], default-features = false }
 rand = "0.10.1"
 serde = { version = "1.0.228", features = ["derive"] }
-stratum-core = "0.5.1"
+# Same source sv2-apps declares, so that linking a real role unifies both into one copy.
+stratum-core = { git = "https://github.com/stratum-mining/stratum", branch = "main" }
 
 env_logger = "0.11.10"
 

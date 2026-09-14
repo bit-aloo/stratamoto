@@ -1,5 +1,6 @@
 use stratum_core::{
     common_messages_sv2::{
+        ERROR_CODE_SETUP_CONNECTION_PROTOCOL_VERSION_MISMATCH,
         ERROR_CODE_SETUP_CONNECTION_UNSUPPORTED_FEATURE_FLAGS,
         ERROR_CODE_SETUP_CONNECTION_UNSUPPORTED_PROTOCOL, SetupConnection,
         SetupConnectionError, SetupConnectionSuccess,
@@ -12,8 +13,6 @@ use crate::{
     error::Result,
     roles::{Role, RoleConfig},
 };
-
-pub const ERROR_CODE_PROTOCOL_VERSION_MISMATCH: &str = "protocol-version-mismatch";
 
 /// An upstream that answers `SetupConnection` for a single subprotocol.
 ///
@@ -37,7 +36,7 @@ impl MockUpstream {
         }
 
         let Some(used_version) = setup.get_version(config.min_version, config.max_version) else {
-            return setup_error(0, ERROR_CODE_PROTOCOL_VERSION_MISMATCH);
+            return setup_error(0, ERROR_CODE_SETUP_CONNECTION_PROTOCOL_VERSION_MISMATCH);
         };
 
         let unsupported = setup.flags & !config.supported_flags;
@@ -75,11 +74,10 @@ impl Role for MockUpstream {
     }
 }
 
-fn setup_error(flags: u32, error_code: &str) -> AnyMessage<'static> {
+fn setup_error(flags: u32, error_code: &'static str) -> AnyMessage<'static> {
     AnyMessage::Common(CommonMessages::SetupConnectionError(SetupConnectionError {
         flags,
         error_code: error_code
-            .to_string()
             .try_into()
             .expect("error codes fit in Str0255"),
     }))

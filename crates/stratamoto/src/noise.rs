@@ -1,20 +1,22 @@
 use std::{
-    io::{Read, Write},
+    io::{ErrorKind, Read, Write},
     net::TcpStream,
     time::Duration,
 };
 
 use stratum_core::{
-    codec_sv2::{Error as CodecError, HandshakeRole, NoiseEncoder, StandardNoiseDecoder, State},
-    framing_sv2::framing::{Frame as CodecFrame, Sv2Frame},
+    codec_sv2::{
+        Decoded, Decrypted, ExpectsHandshakeMessage, Handshake, HandshakeMessage, InitiatorSent,
+        NoiseDecoder, NoiseEncoder, TransportDecryptState, TransportEncryptState,
+    },
+    framing_sv2::framing::SerializedFrame,
     noise_sv2::{
         ELLSWIFT_ENCODING_SIZE, INITIATOR_EXPECTED_HANDSHAKE_MESSAGE_SIZE, Initiator, Responder,
     },
-    parsers_sv2::AnyMessage,
 };
 
 use crate::{
-    connection::Frame,
+    connection::{Frame, assemble},
     error::{Error, Result},
     transport::Transport,
 };
@@ -26,92 +28,122 @@ use crate::{
 /// there is nothing for the harness to do while it waits.
 pub struct NoiseTransport {
     socket: TcpStream,
-    state: State,
-    encoder: NoiseEncoder<AnyMessage<'static>>,
-    decoder: StandardNoiseDecoder<AnyMessage<'static>>,
+    encoder: NoiseEncoder,
+    decoder: NoiseDecoder,
+    encrypt: TransportEncryptState,
+    /// Taken for the duration of a decode, since a failed decryption consumes it and leaves
+    /// the connection unusable.
+    decrypt: Option<TransportDecryptState>,
+    /// The chunk being read, kept across a timed out `recv` so that a frame arriving in pieces
+    /// is not torn by a short poll.
+    pending: Vec<u8>,
+    filled: usize,
 }
 
 impl NoiseTransport {
     /// Connect to a role and run the handshake as the initiator, which is what a downstream
     /// does.
-    pub fn connect(socket: TcpStream, timeout: Duration) -> Result<Self> {
+    pub fn connect(mut socket: TcpStream, timeout: Duration) -> Result<Self> {
+        socket.set_read_timeout(Some(timeout))?;
+        socket.set_write_timeout(Some(timeout))?;
+        let mut encoder = NoiseEncoder::new();
+        let mut decoder = NoiseDecoder::new();
+
         let initiator = Initiator::without_pk().map_err(|e| Error::Noise(format!("{e:?}")))?;
-        let mut state = State::initialized(HandshakeRole::Initiator(initiator));
 
-        socket
-            .set_read_timeout(Some(timeout))
-            .and_then(|()| socket.set_write_timeout(Some(timeout)))
-            .map_err(Error::Io)?;
-        let mut socket = socket;
+        // The first message is the initiator's ellswift encoded key, sent in the clear: there
+        // is no key to encrypt it with yet.
+        let (first, handshake) = Handshake::initiator(initiator).step_0()?;
+        socket.write_all(encoder.encode_handshake(first).as_ref())?;
 
-        // The first handshake message is the initiator's ellswift encoded public key, sent as
-        // plain bytes: there is no key to encrypt it with yet.
-        let first = state.step_0().map_err(Error::Codec)?;
-        socket
-            .write_all(&first.get_payload_when_handshaking())
-            .map_err(Error::Io)?;
+        let second = read_handshake::<InitiatorSent>(&mut socket, &mut decoder)?;
+        let second: [u8; INITIATOR_EXPECTED_HANDSHAKE_MESSAGE_SIZE] =
+            second.payload().try_into().map_err(|_| {
+                Error::Noise("the responder sent a malformed handshake message".to_string())
+            })?;
 
-        let mut response = [0u8; INITIATOR_EXPECTED_HANDSHAKE_MESSAGE_SIZE];
-        socket.read_exact(&mut response).map_err(Error::Io)?;
-
-        let state = state.step_2(response).map_err(Error::Codec)?;
-        Ok(Self::from_state(socket, state))
+        let transport = handshake.step_2(second)?;
+        Ok(Self::from_transport(socket, encoder, decoder, transport))
     }
 
     /// Accept a connection and run the handshake as the responder, which is what an upstream
     /// does. The authority key pair is the one the connecting role expects to see.
     pub fn accept(
-        socket: TcpStream,
+        mut socket: TcpStream,
         authority_public_key: [u8; 32],
         authority_private_key: [u8; 32],
         certificate_validity: Duration,
         timeout: Duration,
     ) -> Result<Self> {
+        socket.set_read_timeout(Some(timeout))?;
+        socket.set_write_timeout(Some(timeout))?;
+        let mut encoder = NoiseEncoder::new();
+        let mut decoder = NoiseDecoder::new();
+
         let responder = Responder::from_authority_kp(
             &authority_public_key,
             &authority_private_key,
             certificate_validity,
         )
         .map_err(|e| Error::Noise(format!("{e:?}")))?;
-        let mut state = State::initialized(HandshakeRole::Responder(responder));
 
-        socket
-            .set_read_timeout(Some(timeout))
-            .and_then(|()| socket.set_write_timeout(Some(timeout)))
-            .map_err(Error::Io)?;
-        let mut socket = socket;
+        let first = read_handshake::<Responder>(&mut socket, &mut decoder)?;
+        let first: [u8; ELLSWIFT_ENCODING_SIZE] = first.payload().try_into().map_err(|_| {
+            Error::Noise("the initiator sent a malformed handshake message".to_string())
+        })?;
 
-        let mut initiator_key = [0u8; ELLSWIFT_ENCODING_SIZE];
-        socket.read_exact(&mut initiator_key).map_err(Error::Io)?;
+        let (second, transport) = Handshake::responder(responder).step_1(first)?;
+        socket.write_all(encoder.encode_handshake(second).as_ref())?;
 
-        let (response, state) = state.step_1(initiator_key).map_err(Error::Codec)?;
-        socket
-            .write_all(&response.get_payload_when_handshaking())
-            .map_err(Error::Io)?;
-
-        Ok(Self::from_state(socket, state))
+        Ok(Self::from_transport(socket, encoder, decoder, transport))
     }
 
-    fn from_state(socket: TcpStream, state: State) -> Self {
+    fn from_transport(
+        socket: TcpStream,
+        encoder: NoiseEncoder,
+        decoder: NoiseDecoder,
+        transport: stratum_core::codec_sv2::Transport,
+    ) -> Self {
+        let (encrypt, decrypt) = transport.split();
         Self {
             socket,
-            state,
-            encoder: NoiseEncoder::new(),
-            decoder: StandardNoiseDecoder::new(),
+            encoder,
+            decoder,
+            encrypt,
+            decrypt: Some(decrypt),
+            pending: Vec::new(),
+            filled: 0,
         }
     }
 
     fn read_frame(&mut self) -> Result<Frame> {
         loop {
-            // The decoder asks for exactly the bytes it is missing, so a frame is never read
-            // past its end and the next one stays intact in the socket.
-            match self.decoder.next_frame(&mut self.state) {
-                Ok(frame) => return into_frame(frame),
-                Err(CodecError::MissingBytes(_)) => {
-                    let writable = self.decoder.writable();
-                    self.socket.read_exact(writable).map_err(Error::Io)?;
+            // The decoder asks for at most one chunk at a time, so a frame is never read past
+            // its end and the next one stays intact in the socket.
+            let expected = self.decoder.writable_len();
+            if self.pending.len() != expected {
+                self.pending.resize(expected, 0);
+                self.filled = 0;
+            }
+            while self.filled < expected {
+                match self.socket.read(&mut self.pending[self.filled..]) {
+                    Ok(0) => return Err(Error::Io(ErrorKind::UnexpectedEof.into())),
+                    Ok(read) => self.filled += read,
+                    Err(e) => return Err(Error::Io(e)),
                 }
-                Err(e) => return Err(Error::Codec(e)),
+            }
+            self.decoder.writable().copy_from_slice(&self.pending);
+            self.filled = 0;
+
+            let state = self.decrypt.take().ok_or_else(|| {
+                Error::Noise("a decryption failed earlier on this connection".to_string())
+            })?;
+            match self.decoder.next_transport_frame(state)? {
+                Decrypted::Frame(frame, state) => {
+                    self.decrypt = Some(state);
+                    return Frame::from_bytes(frame.as_bytes().to_vec());
+                }
+                Decrypted::Incomplete(_, state) => self.decrypt = Some(state),
             }
         }
     }
@@ -125,35 +157,28 @@ impl Transport for NoiseTransport {
         channel_msg: bool,
         payload: &[u8],
     ) -> Result<()> {
-        let frame: Sv2Frame<AnyMessage<'static>, Vec<u8>> =
-            Sv2Frame::from_bytes(assemble(extension_type, message_type, channel_msg, payload)?)
+        let frame =
+            SerializedFrame::from_bytes(assemble(extension_type, message_type, channel_msg, payload)?)
                 .map_err(|_| Error::Framing("could not frame the payload"))?;
 
-        let encoded = self
-            .encoder
-            .encode(frame.into(), &mut self.state)
-            .map_err(Error::Codec)?;
-        self.socket.write_all(encoded.as_ref()).map_err(Error::Io)?;
+        let encoded = self.encoder.encode_transport(frame, &mut self.encrypt)?;
+        self.socket.write_all(encoded.as_ref())?;
         Ok(())
     }
 
     fn recv(&mut self, timeout: Duration) -> Result<Frame> {
-        let previous = self.socket.read_timeout().map_err(Error::Io)?;
+        let previous = self.socket.read_timeout()?;
+        // A zero duration means no timeout to the socket, so a poll is the shortest wait it
+        // accepts.
         self.socket
-            .set_read_timeout(Some(timeout.max(Duration::from_millis(1))))
-            .map_err(Error::Io)?;
+            .set_read_timeout(Some(timeout.max(Duration::from_millis(1))))?;
 
         let result = self.read_frame();
 
-        self.socket.set_read_timeout(previous).map_err(Error::Io)?;
+        self.socket.set_read_timeout(previous)?;
 
         match result {
-            Err(Error::Io(e))
-                if matches!(
-                    e.kind(),
-                    std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
-                ) =>
-            {
+            Err(Error::Io(e)) if matches!(e.kind(), ErrorKind::WouldBlock | ErrorKind::TimedOut) => {
                 Err(Error::Timeout)
             }
             other => other,
@@ -161,55 +186,17 @@ impl Transport for NoiseTransport {
     }
 }
 
-/// Build the six byte header and put the payload behind it.
-fn assemble(
-    extension_type: u16,
-    message_type: u8,
-    channel_msg: bool,
-    payload: &[u8],
-) -> Result<Vec<u8>> {
-    const CHANNEL_MSG_MASK: u16 = 0b1000_0000_0000_0000;
-
-    let length = u32::try_from(payload.len())
-        .ok()
-        .filter(|len| *len < 1 << 24)
-        .ok_or(Error::Framing("payload exceeds the 24 bit length field"))?;
-
-    let extension_type = if channel_msg {
-        extension_type | CHANNEL_MSG_MASK
-    } else {
-        extension_type & !CHANNEL_MSG_MASK
-    };
-
-    let mut bytes = Vec::with_capacity(6 + payload.len());
-    bytes.extend_from_slice(&extension_type.to_le_bytes());
-    bytes.push(message_type);
-    bytes.extend_from_slice(&length.to_le_bytes()[..3]);
-    bytes.extend_from_slice(payload);
-    Ok(bytes)
-}
-
-/// Re-assemble a decoded frame into the owned form the rest of the harness uses.
-fn into_frame<B: AsRef<[u8]> + AsMut<[u8]>>(
-    frame: CodecFrame<AnyMessage<'static>, B>,
-) -> Result<Frame> {
-    let mut frame: Sv2Frame<AnyMessage<'static>, B> = frame
-        .try_into()
-        .map_err(|_| Error::Framing("expected an Sv2 frame, got a handshake frame"))?;
-
-    let header = frame
-        .get_header()
-        .ok_or(Error::Framing("decoded frame has no header"))?;
-
-    let payload = frame.payload().to_vec();
-    let bytes = assemble(
-        header.ext_type_without_channel_msg(),
-        header.msg_type(),
-        header.channel_msg(),
-        &payload,
-    )?;
-
-    Sv2Frame::from_bytes(bytes)
-        .map(Frame)
-        .map_err(|_| Error::Framing("could not re-frame a decoded message"))
+/// Read one handshake message, whose length is fixed by the step the role `R` is waiting on.
+fn read_handshake<R: ExpectsHandshakeMessage>(
+    socket: &mut TcpStream,
+    decoder: &mut NoiseDecoder,
+) -> Result<HandshakeMessage> {
+    loop {
+        let mut chunk = vec![0u8; decoder.writable_len()];
+        socket.read_exact(&mut chunk)?;
+        decoder.writable().copy_from_slice(&chunk);
+        if let Decoded::Frame(message) = decoder.next_handshake_frame::<R>()? {
+            return Ok(message);
+        }
+    }
 }

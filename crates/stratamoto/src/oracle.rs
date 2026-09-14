@@ -2,7 +2,7 @@ use stratamoto_ir::compiler::{CompiledProgram, SetupConnectionSpec};
 
 use crate::{
     transport::Deployment,
-    roles::{RoleConfig, upstream::ERROR_CODE_PROTOCOL_VERSION_MISMATCH, protocol_of},
+    roles::{RoleConfig, protocol_of},
     runner::{Execution, SetupResponse},
 };
 
@@ -75,6 +75,7 @@ impl Oracle for SetupConnectionOracle {
 #[must_use]
 pub fn expected_response(config: &RoleConfig, spec: &SetupConnectionSpec) -> SetupResponse {
     use stratum_core::common_messages_sv2::{
+        ERROR_CODE_SETUP_CONNECTION_PROTOCOL_VERSION_MISMATCH,
         ERROR_CODE_SETUP_CONNECTION_UNSUPPORTED_FEATURE_FLAGS,
         ERROR_CODE_SETUP_CONNECTION_UNSUPPORTED_PROTOCOL,
     };
@@ -91,7 +92,7 @@ pub fn expected_response(config: &RoleConfig, spec: &SetupConnectionSpec) -> Set
     if used_version < spec.min_version || used_version < config.min_version {
         return SetupResponse::Error {
             flags: 0,
-            error_code: ERROR_CODE_PROTOCOL_VERSION_MISMATCH.to_string(),
+            error_code: ERROR_CODE_SETUP_CONNECTION_PROTOCOL_VERSION_MISMATCH.to_string(),
         };
     }
 

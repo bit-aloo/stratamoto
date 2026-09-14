@@ -54,12 +54,12 @@ fn setup_connection() -> SetupConnection<'static> {
         min_version: 2,
         max_version: 2,
         flags: 0,
-        endpoint_host: "0.0.0.0".to_string().try_into().unwrap(),
+        endpoint_host: "0.0.0.0".try_into().unwrap(),
         endpoint_port: 0,
-        vendor: "stratamoto".to_string().try_into().unwrap(),
-        hardware_version: String::new().try_into().unwrap(),
-        firmware: String::new().try_into().unwrap(),
-        device_id: String::new().try_into().unwrap(),
+        vendor: "stratamoto".try_into().unwrap(),
+        hardware_version: "".try_into().unwrap(),
+        firmware: "".try_into().unwrap(),
+        device_id: "".try_into().unwrap(),
     }
 }
 
@@ -82,7 +82,7 @@ fn an_encrypted_setup_connection_round_trips_over_tcp() {
         .expect("the responder handshake completes");
 
         let mut frame = transport.recv(TIMEOUT).expect("a frame arrives");
-        let header = frame.header().expect("the frame has a header");
+        let header = frame.header();
         assert_eq!(header.msg_type(), MESSAGE_TYPE_SETUP_CONNECTION);
 
         match frame.message().expect("the payload decodes") {
