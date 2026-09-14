@@ -6,6 +6,7 @@ edition.workspace = true
 [dependencies]
 stratamoto.workspace = true
 stratamoto-ir.workspace = true
+stratamoto-targets.workspace = true
 postcard.workspace = true
 env_logger.workspace = true
 log.workspace = true
@@ -16,3 +17,7 @@ path = "src/lib.rs"
 [[bin]]
 name = "setup_connection"
 path = "bin/setup_connection.rs"
+
+[[bin]]
+name = "pool_setup_connection"
+path = "bin/pool_setup_connection.rs"

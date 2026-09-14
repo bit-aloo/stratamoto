@@ -11,6 +11,8 @@ pub enum Error {
     UnexpectedMessage(u8),
     Input(String),
     Noise(String),
+    /// The role under test could not be brought up.
+    Target(String),
     Timeout,
 }
 
@@ -26,6 +28,7 @@ impl fmt::Display for Error {
             Error::UnexpectedMessage(t) => write!(f, "unexpected message type 0x{t:02x}"),
             Error::Input(e) => write!(f, "input: {e}"),
             Error::Noise(e) => write!(f, "noise: {e}"),
+            Error::Target(e) => write!(f, "target: {e}"),
             Error::Timeout => write!(f, "timed out"),
         }
     }
