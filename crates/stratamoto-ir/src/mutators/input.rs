@@ -27,11 +27,9 @@ impl<R: RngExt> Mutator<R> for InputMutator {
             return Err(MutatorError::NoMutationsAvailable);
         };
 
-        let builder = ProgramBuilder::from_prefix(
-            program.context.clone(),
-            &program.instructions[..index],
-        )
-        .map_err(|_| MutatorError::CreatedInvalidProgram)?;
+        let builder =
+            ProgramBuilder::from_prefix(program.context.clone(), &program.instructions[..index])
+                .map_err(|_| MutatorError::CreatedInvalidProgram)?;
 
         let slot = rng.random_range(0..program.instructions[index].inputs.len());
         let current = program.instructions[index].inputs[slot];

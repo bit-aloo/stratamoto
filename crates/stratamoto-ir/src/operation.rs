@@ -301,7 +301,10 @@ impl fmt::Display for Operation {
             Operation::SendRawFrame {
                 message_type,
                 extension_type,
-            } => write!(f, "SendRawFrame(0x{message_type:02x}, 0x{extension_type:04x})"),
+            } => write!(
+                f,
+                "SendRawFrame(0x{message_type:02x}, 0x{extension_type:04x})"
+            ),
             Operation::LoadRequestId(v) => write!(f, "LoadRequestId({v})"),
             Operation::LoadHashrate(v) => {
                 write!(f, "LoadHashrate({})", f32::from_bits(*v))

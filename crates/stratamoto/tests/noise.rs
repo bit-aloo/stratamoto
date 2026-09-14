@@ -27,7 +27,11 @@ const TIMEOUT: Duration = Duration::from_secs(5);
 /// followed by the 32 byte x only key, and a secret key as base58check over the key alone.
 fn public_key(encoded: &str) -> [u8; 32] {
     let decoded = decode(encoded);
-    assert_eq!(u16::from_le_bytes([decoded[0], decoded[1]]), 1, "key version");
+    assert_eq!(
+        u16::from_le_bytes([decoded[0], decoded[1]]),
+        1,
+        "key version"
+    );
     decoded[2..].try_into().expect("a 32 byte key")
 }
 
@@ -142,7 +146,9 @@ fn the_payload_is_not_sent_in_the_clear() {
 
         // Complete the handshake by hand so that the raw bytes after it can be inspected.
         let mut initiator_key = [0u8; 64];
-        socket.read_exact(&mut initiator_key).expect("the first message");
+        socket
+            .read_exact(&mut initiator_key)
+            .expect("the first message");
 
         let mut responder = stratamoto::stratum_core::noise_sv2::Responder::from_authority_kp(
             &public_key(AUTHORITY_PUBLIC),

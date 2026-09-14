@@ -181,9 +181,7 @@ enum Value {
     Nop,
     Role(RoleId),
     Connection(ConnectionId),
-    Session {
-        connection: ConnectionId,
-    },
+    Session { connection: ConnectionId },
     Channel(ChannelSlot),
     ChannelId(IdSource),
     JobId(IdSource),
@@ -368,10 +366,7 @@ impl Compiler {
                     .connection_variables
                     .insert(connection, self.values.len());
                 self.values.push(Value::Connection(connection));
-                self.push_action(
-                    index,
-                    Action::Connect { connection, role },
-                );
+                self.push_action(index, Action::Connect { connection, role });
             }
 
             Operation::BeginBuildSetupConnection => {

@@ -38,37 +38,42 @@ fn open_channel(submit_share: bool, job: Option<u32>) -> Program {
 
     let min = one(b.append_op(Operation::LoadVersion(2), &[]).unwrap());
     let max = one(b.append_op(Operation::LoadVersion(2), &[]).unwrap());
-    let setup = one(b.append_op(Operation::BeginBuildSetupConnection, &[]).unwrap());
-    b.append_op(Operation::SetVersions, &[&setup, &min, &max]).unwrap();
-    let setup = one(
-        b.append_op(
-            Operation::EndBuildSetupConnection { protocol: Protocol::Mining },
+    let setup = one(b
+        .append_op(Operation::BeginBuildSetupConnection, &[])
+        .unwrap());
+    b.append_op(Operation::SetVersions, &[&setup, &min, &max])
+        .unwrap();
+    let setup = one(b
+        .append_op(
+            Operation::EndBuildSetupConnection {
+                protocol: Protocol::Mining,
+            },
             &[&setup],
         )
-        .unwrap(),
-    );
-    let session = one(
-        b.append_op(
-            Operation::SendSetupConnection { protocol: Protocol::Mining },
+        .unwrap());
+    let session = one(b
+        .append_op(
+            Operation::SendSetupConnection {
+                protocol: Protocol::Mining,
+            },
             &[&connection, &setup],
         )
-        .unwrap(),
-    );
+        .unwrap());
 
     let request = one(b.append_op(Operation::LoadRequestId(7), &[]).unwrap());
     let identity = one(b.append_op(Operation::LoadStr(String::new()), &[]).unwrap());
-    let hashrate = one(
-        b.append_op(Operation::LoadHashrate(1_000_000_000f32.to_bits()), &[])
-            .unwrap(),
-    );
-    let target = one(b.append_op(Operation::LoadTarget(regtest_max_target()), &[]).unwrap());
-    let channel = one(
-        b.append_op(
+    let hashrate = one(b
+        .append_op(Operation::LoadHashrate(1_000_000_000f32.to_bits()), &[])
+        .unwrap());
+    let target = one(b
+        .append_op(Operation::LoadTarget(regtest_max_target()), &[])
+        .unwrap());
+    let channel = one(b
+        .append_op(
             Operation::OpenStandardMiningChannel,
             &[&session, &request, &identity, &hashrate, &target],
         )
-        .unwrap(),
-    );
+        .unwrap());
 
     if submit_share {
         let channel_id = one(b.append_op(Operation::ChannelIdOf, &[&channel]).unwrap());
@@ -79,10 +84,20 @@ fn open_channel(submit_share: bool, job: Option<u32>) -> Program {
         let sequence = one(b.append_op(Operation::LoadSequenceNumber(1), &[]).unwrap());
         let nonce = one(b.append_op(Operation::LoadNonce(0), &[]).unwrap());
         let ntime = one(b.append_op(Operation::LoadNtime(0), &[]).unwrap());
-        let version = one(b.append_op(Operation::LoadBlockVersion(0x2000_0000), &[]).unwrap());
+        let version = one(b
+            .append_op(Operation::LoadBlockVersion(0x2000_0000), &[])
+            .unwrap());
         b.append_op(
             Operation::SubmitSharesStandard,
-            &[&session, &channel_id, &sequence, &job_id, &nonce, &ntime, &version],
+            &[
+                &session,
+                &channel_id,
+                &sequence,
+                &job_id,
+                &nonce,
+                &ntime,
+                &version,
+            ],
         )
         .unwrap();
     }
@@ -135,8 +150,14 @@ fn the_real_pool_opens_a_channel_and_answers_a_share() {
         "the share never reached the pool: {share:?}"
     );
     if let ShareOutcome::Error { error_code, .. } = share {
-        assert_ne!(error_code, "invalid-channel-id", "share named an unopened channel");
-        assert_ne!(error_code, "invalid-job-id", "share named a job the pool never announced");
+        assert_ne!(
+            error_code, "invalid-channel-id",
+            "share named an unopened channel"
+        );
+        assert_ne!(
+            error_code, "invalid-job-id",
+            "share named a job the pool never announced"
+        );
     }
 
     // A job identifier the program made up is rejected, which is what the relation buys: only

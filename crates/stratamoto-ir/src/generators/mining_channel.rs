@@ -58,12 +58,9 @@ impl<R: RngExt> Generator<R> for MiningChannelGenerator {
         let identity = *USER_IDENTITIES
             .choose(rng)
             .expect("USER_IDENTITIES is not empty");
-        let user_identity =
-            one(builder.append_op(Operation::LoadStr(identity.to_string()), &[])?);
-        let hashrate = one(builder.append_op(
-            Operation::LoadHashrate(1_000_000_000f32.to_bits()),
-            &[],
-        )?);
+        let user_identity = one(builder.append_op(Operation::LoadStr(identity.to_string()), &[])?);
+        let hashrate =
+            one(builder.append_op(Operation::LoadHashrate(1_000_000_000f32.to_bits()), &[])?);
         let target = one(builder.append_op(Operation::LoadTarget(REGTEST_MAX_TARGET), &[])?);
 
         let channel = one(builder.append_op(
@@ -80,8 +77,7 @@ impl<R: RngExt> Generator<R> for MiningChannelGenerator {
                 one(builder.append_op(Operation::LoadSequenceNumber(rng.random()), &[])?);
             let nonce = one(builder.append_op(Operation::LoadNonce(rng.random()), &[])?);
             let ntime = one(builder.append_op(Operation::LoadNtime(rng.random()), &[])?);
-            let version =
-                one(builder.append_op(Operation::LoadBlockVersion(0x2000_0000), &[])?);
+            let version = one(builder.append_op(Operation::LoadBlockVersion(0x2000_0000), &[])?);
 
             builder.append_op(
                 Operation::SubmitSharesStandard,
@@ -102,6 +98,10 @@ impl<R: RngExt> Generator<R> for MiningChannelGenerator {
 }
 
 fn one(mut variables: Vec<IndexedVariable>) -> IndexedVariable {
-    assert_eq!(variables.len(), 1, "operation produces exactly one variable");
+    assert_eq!(
+        variables.len(),
+        1,
+        "operation produces exactly one variable"
+    );
     variables.pop().expect("checked above")
 }

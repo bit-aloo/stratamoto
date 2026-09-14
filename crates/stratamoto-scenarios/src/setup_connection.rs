@@ -120,7 +120,13 @@ pub fn signature(execution: &Execution) -> u64 {
                 SetupResponse::Unexpected { message_type } => (2, u64::from(*message_type)),
                 SetupResponse::Silence => (3, 0),
             };
-            (role, session.protocol, session.first_on_connection, kind, detail)
+            (
+                role,
+                session.protocol,
+                session.first_on_connection,
+                kind,
+                detail,
+            )
         })
         .collect();
     interactions.sort();

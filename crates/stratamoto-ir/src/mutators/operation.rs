@@ -79,10 +79,16 @@ fn mutate_operation<R: RngExt>(operation: &Operation, rng: &mut R) -> Operation 
         }
 
         Operation::EndBuildSetupConnection { .. } => Operation::EndBuildSetupConnection {
-            protocol: *PROTOCOLS.iter().choose(rng).expect("PROTOCOLS is not empty"),
+            protocol: *PROTOCOLS
+                .iter()
+                .choose(rng)
+                .expect("PROTOCOLS is not empty"),
         },
         Operation::SendSetupConnection { .. } => Operation::SendSetupConnection {
-            protocol: *PROTOCOLS.iter().choose(rng).expect("PROTOCOLS is not empty"),
+            protocol: *PROTOCOLS
+                .iter()
+                .choose(rng)
+                .expect("PROTOCOLS is not empty"),
         },
 
         Operation::SendRawFrame {

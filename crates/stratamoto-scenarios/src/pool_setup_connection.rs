@@ -47,7 +47,8 @@ impl PoolSetupConnectionScenario {
         // mining: an unanswered channel open says something about a pool and nothing about a
         // role that was never asked to serve one.
         let oracle = MiningChannelOracle;
-        if let OracleResult::Fail(e) = oracle.evaluate(&self.deployment, &testcase.program, &execution)
+        if let OracleResult::Fail(e) =
+            oracle.evaluate(&self.deployment, &testcase.program, &execution)
         {
             let result = ScenarioResult::Fail(format!("{}: {e}", oracle.name()));
             return (execution, result);

@@ -9,9 +9,7 @@ use pool_sv2::{
     config::{AuthorityConfig, ConnectionConfig, PoolConfig},
 };
 use stratamoto::{
-    noise::NoiseTransport,
-    roles::RoleConfig,
-    stratum_core::common_messages_sv2::Protocol,
+    noise::NoiseTransport, roles::RoleConfig, stratum_core::common_messages_sv2::Protocol,
     transport::Deployment,
 };
 use stratum_apps::{

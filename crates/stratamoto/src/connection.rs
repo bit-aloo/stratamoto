@@ -105,8 +105,7 @@ impl Connection {
     pub async fn send(&self, message: AnyMessage<'_>) -> Result<()> {
         let message_type = message.message_type();
         let channel_bit = message.channel_bit();
-        let frame =
-            MessageFrame::from_message(message, message_type, EXTENSION_TYPE, channel_bit)?;
+        let frame = MessageFrame::from_message(message, message_type, EXTENSION_TYPE, channel_bit)?;
 
         let mut bytes = vec![0u8; frame.encoded_length()];
         frame.encode_into(&mut bytes)?;

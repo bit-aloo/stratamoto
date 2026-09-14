@@ -53,7 +53,6 @@ impl SimulatedDeployment {
     pub fn roles(&self) -> &[RoleConfig] {
         &self.roles
     }
-
 }
 
 impl DeploymentTrait for SimulatedDeployment {

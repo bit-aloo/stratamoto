@@ -46,6 +46,10 @@ impl<R: RngExt> Generator<R> for RawFrameGenerator {
 }
 
 fn one(mut variables: Vec<IndexedVariable>) -> IndexedVariable {
-    assert_eq!(variables.len(), 1, "operation produces exactly one variable");
+    assert_eq!(
+        variables.len(),
+        1,
+        "operation produces exactly one variable"
+    );
     variables.pop().expect("checked above")
 }

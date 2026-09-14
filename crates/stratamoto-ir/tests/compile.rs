@@ -22,14 +22,17 @@ fn connect(builder: &mut ProgramBuilder) -> IndexedVariable {
 
 fn send_setup(builder: &mut ProgramBuilder, connection: &IndexedVariable) {
     let protocol = Protocol::Mining;
-    let setup = one(builder.append_op(Operation::BeginBuildSetupConnection, &[]).unwrap());
-    let setup = one(
-        builder
-            .append_op(Operation::EndBuildSetupConnection { protocol }, &[&setup])
-            .unwrap(),
-    );
+    let setup = one(builder
+        .append_op(Operation::BeginBuildSetupConnection, &[])
+        .unwrap());
+    let setup = one(builder
+        .append_op(Operation::EndBuildSetupConnection { protocol }, &[&setup])
+        .unwrap());
     builder
-        .append_op(Operation::SendSetupConnection { protocol }, &[connection, &setup])
+        .append_op(
+            Operation::SendSetupConnection { protocol },
+            &[connection, &setup],
+        )
         .unwrap();
 }
 
@@ -81,7 +84,9 @@ fn every_new_connection_starts_over() {
 fn a_raw_frame_sent_before_a_setup_makes_it_not_first() {
     let mut builder = builder();
     let connection = connect(&mut builder);
-    let bytes = one(builder.append_op(Operation::LoadBytes(vec![0]), &[]).unwrap());
+    let bytes = one(builder
+        .append_op(Operation::LoadBytes(vec![0]), &[])
+        .unwrap());
     builder
         .append_op(
             Operation::SendRawFrame {
@@ -93,5 +98,8 @@ fn a_raw_frame_sent_before_a_setup_makes_it_not_first() {
         .unwrap();
     send_setup(&mut builder, &connection);
 
-    assert_eq!(first_on_connection(&builder.finalize().unwrap()), vec![false]);
+    assert_eq!(
+        first_on_connection(&builder.finalize().unwrap()),
+        vec![false]
+    );
 }

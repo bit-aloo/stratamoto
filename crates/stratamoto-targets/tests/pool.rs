@@ -25,21 +25,33 @@ fn setup_connection(protocol: Protocol, min_version: u16, max_version: u16, flag
     let mut builder = ProgramBuilder::new(context());
     let role = one(builder.append_op(Operation::LoadRole(0), &[]).unwrap());
     let connection = one(builder.append_op(Operation::Connect, &[&role]).unwrap());
-    let min_version = one(builder.append_op(Operation::LoadVersion(min_version), &[]).unwrap());
-    let max_version = one(builder.append_op(Operation::LoadVersion(max_version), &[]).unwrap());
+    let min_version = one(builder
+        .append_op(Operation::LoadVersion(min_version), &[])
+        .unwrap());
+    let max_version = one(builder
+        .append_op(Operation::LoadVersion(max_version), &[])
+        .unwrap());
     let flags = one(builder.append_op(Operation::LoadFlags(flags), &[]).unwrap());
-    let setup = one(builder.append_op(Operation::BeginBuildSetupConnection, &[]).unwrap());
+    let setup = one(builder
+        .append_op(Operation::BeginBuildSetupConnection, &[])
+        .unwrap());
     builder
-        .append_op(Operation::SetVersions, &[&setup, &min_version, &max_version])
+        .append_op(
+            Operation::SetVersions,
+            &[&setup, &min_version, &max_version],
+        )
         .unwrap();
-    builder.append_op(Operation::SetFlags, &[&setup, &flags]).unwrap();
-    let setup = one(
-        builder
-            .append_op(Operation::EndBuildSetupConnection { protocol }, &[&setup])
-            .unwrap(),
-    );
     builder
-        .append_op(Operation::SendSetupConnection { protocol }, &[&connection, &setup])
+        .append_op(Operation::SetFlags, &[&setup, &flags])
+        .unwrap();
+    let setup = one(builder
+        .append_op(Operation::EndBuildSetupConnection { protocol }, &[&setup])
+        .unwrap());
+    builder
+        .append_op(
+            Operation::SendSetupConnection { protocol },
+            &[&connection, &setup],
+        )
         .unwrap();
     builder.finalize().unwrap()
 }
@@ -61,7 +73,9 @@ fn run_checked(deployment: &PoolDeployment, program: &Program) -> Execution {
 }
 
 fn answer(deployment: &PoolDeployment, program: &Program) -> SetupResponse {
-    run_checked(deployment, program).sessions[&0].response.clone()
+    run_checked(deployment, program).sessions[&0]
+        .response
+        .clone()
 }
 
 /// One pool for every case: starting one waits on its first template, which takes seconds.
@@ -79,7 +93,10 @@ fn the_real_pool_answers_setup_connection_within_the_specification() {
 
     // A work selection request is answered with REQUIRES_EXTENDED_CHANNELS.
     assert_eq!(
-        answer(&deployment, &setup_connection(Protocol::Mining, 2, 2, 1 << 1)),
+        answer(
+            &deployment,
+            &setup_connection(Protocol::Mining, 2, 2, 1 << 1)
+        ),
         SetupResponse::Success {
             used_version: 2,
             flags: 1 << 1
@@ -130,17 +147,22 @@ fn a_second_frame_in_the_teardown_window_can_livelock_the_pool() {
     let role = one(builder.append_op(Operation::LoadRole(0), &[]).unwrap());
     let connection = one(builder.append_op(Operation::Connect, &[&role]).unwrap());
     for protocol in [Protocol::TemplateDistribution, Protocol::Mining] {
-        let setup = one(builder.append_op(Operation::BeginBuildSetupConnection, &[]).unwrap());
-        let setup = one(
-            builder
-                .append_op(Operation::EndBuildSetupConnection { protocol }, &[&setup])
-                .unwrap(),
-        );
+        let setup = one(builder
+            .append_op(Operation::BeginBuildSetupConnection, &[])
+            .unwrap());
+        let setup = one(builder
+            .append_op(Operation::EndBuildSetupConnection { protocol }, &[&setup])
+            .unwrap());
         builder
-            .append_op(Operation::SendSetupConnection { protocol }, &[&connection, &setup])
+            .append_op(
+                Operation::SendSetupConnection { protocol },
+                &[&connection, &setup],
+            )
             .unwrap();
     }
-    let program = Compiler::new().compile(&builder.finalize().unwrap()).unwrap();
+    let program = Compiler::new()
+        .compile(&builder.finalize().unwrap())
+        .unwrap();
 
     // The race is about even, so a single run is not enough to rely on. Twenty attempts make a
     // miss vanishingly unlikely while the bug is present, and all-healthy is the fix signal.

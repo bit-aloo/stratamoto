@@ -4,21 +4,12 @@ use crate::{Operation, Variable};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ProgramValidationError {
-    InvalidNumberOfInputs {
-        is: usize,
-        expected: usize,
-    },
-    InvalidVariableType {
-        is: Variable,
-        expected: Variable,
-    },
+    InvalidNumberOfInputs { is: usize, expected: usize },
+    InvalidVariableType { is: Variable, expected: Variable },
     VariableNotDefined(usize),
     RoleNotFound(usize),
     ConnectionNotFound(usize),
-    InvalidBlockEnd {
-        begin: Operation,
-        end: Operation,
-    },
+    InvalidBlockEnd { begin: Operation, end: Operation },
     UnfinishedBlock(Operation),
 }
 

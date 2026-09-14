@@ -2,8 +2,8 @@ use stratum_core::{
     common_messages_sv2::{
         ERROR_CODE_SETUP_CONNECTION_PROTOCOL_VERSION_MISMATCH,
         ERROR_CODE_SETUP_CONNECTION_UNSUPPORTED_FEATURE_FLAGS,
-        ERROR_CODE_SETUP_CONNECTION_UNSUPPORTED_PROTOCOL, SetupConnection,
-        SetupConnectionError, SetupConnectionSuccess,
+        ERROR_CODE_SETUP_CONNECTION_UNSUPPORTED_PROTOCOL, SetupConnection, SetupConnectionError,
+        SetupConnectionSuccess,
     },
     parsers_sv2::{AnyMessage, CommonMessages},
 };
@@ -77,8 +77,6 @@ impl Role for MockUpstream {
 fn setup_error(flags: u32, error_code: &'static str) -> AnyMessage<'static> {
     AnyMessage::Common(CommonMessages::SetupConnectionError(SetupConnectionError {
         flags,
-        error_code: error_code
-            .try_into()
-            .expect("error codes fit in Str0255"),
+        error_code: error_code.try_into().expect("error codes fit in Str0255"),
     }))
 }

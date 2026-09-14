@@ -1,8 +1,8 @@
 use rand::{RngExt, seq::IndexedRandom};
 
 use crate::{
-    IndexedVariable, Operation, ProgramBuilder, Protocol, Variable,
-    errors::ProgramValidationError, generators::Generator,
+    IndexedVariable, Operation, ProgramBuilder, Protocol, Variable, errors::ProgramValidationError,
+    generators::Generator,
 };
 
 const PROTOCOLS: [Protocol; 3] = [
@@ -45,7 +45,10 @@ impl<R: RngExt> Generator<R> for SetupConnectionGenerator {
         let flags = one(builder.append_op(Operation::LoadFlags(rng.random()), &[])?);
 
         let setup = one(builder.append_op(Operation::BeginBuildSetupConnection, &[])?);
-        builder.append_op(Operation::SetVersions, &[&setup, &min_version, &max_version])?;
+        builder.append_op(
+            Operation::SetVersions,
+            &[&setup, &min_version, &max_version],
+        )?;
         builder.append_op(Operation::SetFlags, &[&setup, &flags])?;
 
         // The remaining fields are set only sometimes, so that both shapes are in the corpus.
@@ -67,10 +70,8 @@ impl<R: RngExt> Generator<R> for SetupConnectionGenerator {
                 &[&setup, &vendor, &hardware, &firmware, &device],
             )?;
         }
-        let setup = one(builder.append_op(
-            Operation::EndBuildSetupConnection { protocol },
-            &[&setup],
-        )?);
+        let setup =
+            one(builder.append_op(Operation::EndBuildSetupConnection { protocol }, &[&setup])?);
 
         builder.append_op(
             Operation::SendSetupConnection { protocol },
@@ -82,6 +83,10 @@ impl<R: RngExt> Generator<R> for SetupConnectionGenerator {
 }
 
 fn one(mut variables: Vec<IndexedVariable>) -> IndexedVariable {
-    assert_eq!(variables.len(), 1, "operation produces exactly one variable");
+    assert_eq!(
+        variables.len(),
+        1,
+        "operation produces exactly one variable"
+    );
     variables.pop().expect("checked above")
 }

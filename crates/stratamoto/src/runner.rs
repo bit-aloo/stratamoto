@@ -29,10 +29,18 @@ pub const UNOWED_RESPONSE_WAIT: Duration = Duration::from_millis(100);
 /// What a role answered a `SetupConnection` with.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SetupResponse {
-    Success { used_version: u16, flags: u32 },
-    Error { flags: u32, error_code: String },
+    Success {
+        used_version: u16,
+        flags: u32,
+    },
+    Error {
+        flags: u32,
+        error_code: String,
+    },
     /// A frame arrived, but it was not a valid answer to `SetupConnection`.
-    Unexpected { message_type: u8 },
+    Unexpected {
+        message_type: u8,
+    },
     /// Nothing arrived before the timeout.
     Silence,
 }
@@ -335,8 +343,7 @@ fn await_channel_open<T: Transport>(link: &mut T) -> ChannelOutcome {
             Ok(AnyMessage::Mining(Mining::SetNewPrevHash(prev_hash))) => Some(prev_hash.job_id),
             _ => None,
         };
-        if let (Some(announced), ChannelOutcome::Success { job_id, .. }) =
-            (announced, &mut outcome)
+        if let (Some(announced), ChannelOutcome::Success { job_id, .. }) = (announced, &mut outcome)
             && job_id.is_none()
         {
             *job_id = Some(announced);

@@ -157,9 +157,13 @@ impl Transport for NoiseTransport {
         channel_msg: bool,
         payload: &[u8],
     ) -> Result<()> {
-        let frame =
-            SerializedFrame::from_bytes(assemble(extension_type, message_type, channel_msg, payload)?)
-                .map_err(|_| Error::Framing("could not frame the payload"))?;
+        let frame = SerializedFrame::from_bytes(assemble(
+            extension_type,
+            message_type,
+            channel_msg,
+            payload,
+        )?)
+        .map_err(|_| Error::Framing("could not frame the payload"))?;
 
         let encoded = self.encoder.encode_transport(frame, &mut self.encrypt)?;
         self.socket.write_all(encoded.as_ref())?;
@@ -178,7 +182,9 @@ impl Transport for NoiseTransport {
         self.socket.set_read_timeout(previous)?;
 
         match result {
-            Err(Error::Io(e)) if matches!(e.kind(), ErrorKind::WouldBlock | ErrorKind::TimedOut) => {
+            Err(Error::Io(e))
+                if matches!(e.kind(), ErrorKind::WouldBlock | ErrorKind::TimedOut) =>
+            {
                 Err(Error::Timeout)
             }
             other => other,

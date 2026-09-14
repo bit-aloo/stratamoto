@@ -95,7 +95,13 @@ fn main() -> ExitCode {
         Ok("pool") => match PoolSetupConnectionScenario::start() {
             Ok(scenario) => {
                 let num_roles = scenario.num_roles();
-                fuzz(PoolTarget { scenario }, num_roles, iterations, seed, failure_dir)
+                fuzz(
+                    PoolTarget { scenario },
+                    num_roles,
+                    iterations,
+                    seed,
+                    failure_dir,
+                )
             }
             Err(e) => {
                 eprintln!("could not start the pool: {e}");
@@ -163,8 +169,7 @@ fn fuzz<T: Target>(
 fn save(dir: &str, index: usize, program: &Program) -> std::io::Result<()> {
     std::fs::create_dir_all(dir)?;
     let path = std::path::Path::new(dir).join(format!("failure-{index}.postcard"));
-    let bytes =
-        postcard::to_allocvec(program).map_err(|e| std::io::Error::other(e.to_string()))?;
+    let bytes = postcard::to_allocvec(program).map_err(|e| std::io::Error::other(e.to_string()))?;
     std::fs::File::create(&path)?.write_all(&bytes)?;
     println!("saved to {}", path.display());
     Ok(())

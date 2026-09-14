@@ -10,7 +10,12 @@ fn pool() -> RoleConfig {
     RoleConfig::new(WireProtocol::MiningProtocol)
 }
 
-fn setup(protocol: Protocol, min_version: u16, max_version: u16, flags: u32) -> SetupConnectionSpec {
+fn setup(
+    protocol: Protocol,
+    min_version: u16,
+    max_version: u16,
+    flags: u32,
+) -> SetupConnectionSpec {
     SetupConnectionSpec {
         protocol,
         min_version,
@@ -22,7 +27,15 @@ fn setup(protocol: Protocol, min_version: u16, max_version: u16, flags: u32) -> 
 
 #[test]
 fn an_unanswered_setup_connection_fails() {
-    assert!(check(&pool(), &setup(Protocol::Mining, 2, 2, 0), true, &SetupResponse::Silence).is_err());
+    assert!(
+        check(
+            &pool(),
+            &setup(Protocol::Mining, 2, 2, 0),
+            true,
+            &SetupResponse::Silence
+        )
+        .is_err()
+    );
 }
 
 #[test]
@@ -66,7 +79,15 @@ fn accepting_a_subprotocol_the_role_does_not_serve_fails() {
         used_version: 2,
         flags: 0,
     };
-    assert!(check(&pool(), &setup(Protocol::TemplateDistribution, 2, 2, 0), true, &response).is_err());
+    assert!(
+        check(
+            &pool(),
+            &setup(Protocol::TemplateDistribution, 2, 2, 0),
+            true,
+            &response
+        )
+        .is_err()
+    );
 }
 
 /// What sv2-apps' pool does at the revision this harness tracks: it accepts flags it does not

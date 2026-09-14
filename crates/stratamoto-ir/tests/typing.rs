@@ -12,10 +12,7 @@ fn context() -> ProgramContext {
 }
 
 /// Build a connection and a finalized `SetupConnection` for `protocol`.
-fn connection_and_setup(
-    builder: &mut ProgramBuilder,
-    protocol: Protocol,
-) -> (usize, usize) {
+fn connection_and_setup(builder: &mut ProgramBuilder, protocol: Protocol) -> (usize, usize) {
     let role = builder
         .append(Instruction::new(Operation::LoadRole(0), vec![]))
         .unwrap()[0]

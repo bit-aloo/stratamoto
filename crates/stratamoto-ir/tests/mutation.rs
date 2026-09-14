@@ -2,10 +2,13 @@ use rand::{SeedableRng, rngs::SmallRng};
 use stratamoto_ir::{
     Operation, Program, ProgramBuilder, ProgramContext, Protocol,
     generators::{Generator, setup_connection::SetupConnectionGenerator},
-    minimizers::{Minimizer, block::BlockMinimizer, cutting::CuttingMinimizer,
-                 nopping::NoppingMinimizer},
-    mutators::{Mutator, concat::ConcatMutator, generate::GeneratorMutator, input::InputMutator,
-               operation::OperationMutator},
+    minimizers::{
+        Minimizer, block::BlockMinimizer, cutting::CuttingMinimizer, nopping::NoppingMinimizer,
+    },
+    mutators::{
+        Mutator, concat::ConcatMutator, generate::GeneratorMutator, input::InputMutator,
+        operation::OperationMutator,
+    },
 };
 
 fn context() -> ProgramContext {
@@ -19,9 +22,12 @@ fn context() -> ProgramContext {
 fn seeded(seed: u64) -> Program {
     let mut rng = SmallRng::seed_from_u64(seed);
     let mut builder = ProgramBuilder::new(context());
-    SetupConnectionGenerator { role: 0, protocol: None }
-        .generate(&mut builder, &mut rng)
-        .unwrap();
+    SetupConnectionGenerator {
+        role: 0,
+        protocol: None,
+    }
+    .generate(&mut builder, &mut rng)
+    .unwrap();
     builder.finalize().unwrap()
 }
 
@@ -32,7 +38,10 @@ fn mutators_never_produce_an_invalid_program() {
     let mut input = InputMutator;
     let mut operation = OperationMutator;
     let mut concat = ConcatMutator;
-    let mut generate = GeneratorMutator::new(SetupConnectionGenerator { role: 1, protocol: None });
+    let mut generate = GeneratorMutator::new(SetupConnectionGenerator {
+        role: 1,
+        protocol: None,
+    });
 
     for seed in 0..200u64 {
         let mut rng = SmallRng::seed_from_u64(seed);
@@ -115,10 +124,7 @@ fn minimizers_reduce_a_program_that_is_never_needed() {
     program.remove_nops();
 
     assert!(program.is_statically_valid());
-    assert!(
-        program.instructions.is_empty(),
-        "left over:\n{program}"
-    );
+    assert!(program.instructions.is_empty(), "left over:\n{program}");
 }
 
 /// Minimizing against a predicate that only the send satisfies has to keep everything the
@@ -148,5 +154,8 @@ fn minimizers_keep_what_the_failure_needs() {
     assert!(sends(&program));
     // The send needs a connection and a finalized setup connection, which need the block and
     // the role load, so nothing but the unused loads can go.
-    assert!(program.instructions.len() >= 5, "over minimized:\n{program}");
+    assert!(
+        program.instructions.len() >= 5,
+        "over minimized:\n{program}"
+    );
 }

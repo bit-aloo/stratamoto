@@ -155,7 +155,10 @@ impl ProgramBuilder {
         if instruction.operation.is_block_end() {
             let exited = self.exit_scope();
             let begin = &self.instructions[exited.begin.expect("a non global scope has a begin")];
-            if !instruction.operation.is_matching_block_begin(&begin.operation) {
+            if !instruction
+                .operation
+                .is_matching_block_begin(&begin.operation)
+            {
                 return Err(ProgramValidationError::InvalidBlockEnd {
                     begin: begin.operation.clone(),
                     end: instruction.operation.clone(),
