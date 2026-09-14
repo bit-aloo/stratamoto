@@ -17,6 +17,10 @@ rand = "0.10.1"
 serde = { version = "1.0.228", features = ["derive"] }
 # Same source sv2-apps declares, so that linking a real role unifies both into one copy.
 stratum-core = { git = "https://github.com/stratum-mining/stratum", branch = "main" }
+# The real roles under test, at the sv2-apps revision whose stratum-core the line above tracks.
+pool_sv2 = { git = "https://github.com/stratum-mining/sv2-apps.git", rev = "ab8f30f1784ea20c2de1b2726c47e7eea10f4556", default-features = false }
+stratum-apps = { git = "https://github.com/stratum-mining/sv2-apps.git", rev = "ab8f30f1784ea20c2de1b2726c47e7eea10f4556" }
+tokio = { version = "1.44.1", features = ["rt-multi-thread"] }
 
 env_logger = "0.11.10"
 
@@ -25,3 +29,4 @@ stratamoto = { path = "crates/stratamoto" }
 stratamoto-ir = { path = "crates/stratamoto-ir" }
 stratamoto-fuzz = { path = "crates/stratamoto-fuzz" }
 stratamoto-scenarios = { path = "crates/stratamoto-scenarios" }
+stratamoto-targets = { path = "crates/stratamoto-targets" }
