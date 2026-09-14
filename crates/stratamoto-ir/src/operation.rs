@@ -46,6 +46,32 @@ pub enum Operation {
         protocol: Protocol,
     },
 
+    /// Mining protocol values.
+    LoadRequestId(u32),
+    /// A nominal hash rate, as the bits of the `f32` the wire carries. Bits rather than a
+    /// float because an operation has to compare equal and hash, and because it lets a
+    /// mutation reach the values a float has and an integer does not.
+    LoadHashrate(u32),
+    LoadTarget([u8; 32]),
+    LoadChannelId(u32),
+    LoadJobId(u32),
+    LoadSequenceNumber(u32),
+    LoadNonce(u32),
+    LoadNtime(u32),
+    LoadBlockVersion(u32),
+
+    /// Open a standard mining channel on a mining session.
+    ///
+    /// The channel it produces is bound when the server answers, since the identifiers belong
+    /// to the server, not to the program.
+    OpenStandardMiningChannel,
+    /// The identifier the server assigned to a channel.
+    ChannelIdOf,
+    /// The job the server announced on a channel.
+    JobIdOf,
+    /// Submit a share against a job on a channel.
+    SubmitSharesStandard,
+
     /// Send arbitrary bytes as a frame payload, bypassing message construction.
     SendRawFrame {
         message_type: u8,
@@ -102,12 +128,27 @@ impl Operation {
             }
             Operation::SendSetupConnection { protocol } => vec![Variable::Session(*protocol)],
 
+            Operation::LoadRequestId(_) => vec![Variable::RequestId],
+            Operation::LoadHashrate(_) => vec![Variable::Hashrate],
+            Operation::LoadTarget(_) => vec![Variable::Target],
+            Operation::LoadChannelId(_) => vec![Variable::ChannelId],
+            Operation::LoadJobId(_) => vec![Variable::JobId],
+            Operation::LoadSequenceNumber(_) => vec![Variable::SequenceNumber],
+            Operation::LoadNonce(_) => vec![Variable::Nonce],
+            Operation::LoadNtime(_) => vec![Variable::Ntime],
+            Operation::LoadBlockVersion(_) => vec![Variable::BlockVersion],
+
+            Operation::OpenStandardMiningChannel => vec![Variable::Channel],
+            Operation::ChannelIdOf => vec![Variable::ChannelId],
+            Operation::JobIdOf => vec![Variable::JobId],
+
             Operation::BeginBuildSetupConnection
             | Operation::SetVersions
             | Operation::SetFlags
             | Operation::SetEndpoint
             | Operation::SetDeviceInfo
             | Operation::SendRawFrame { .. }
+            | Operation::SubmitSharesStandard
             | Operation::AdvanceTime
             | Operation::Probe => vec![],
         }
@@ -152,6 +193,27 @@ impl Operation {
             ],
             Operation::SendRawFrame { .. } => vec![Variable::Connection, Variable::Bytes],
 
+            // A mining message may only be sent on a session that was set up for mining, and a
+            // share may only name a channel and a job, which is what ties it to an open the
+            // server answered.
+            Operation::OpenStandardMiningChannel => vec![
+                Variable::Session(Protocol::Mining),
+                Variable::RequestId,
+                Variable::Str,
+                Variable::Hashrate,
+                Variable::Target,
+            ],
+            Operation::ChannelIdOf | Operation::JobIdOf => vec![Variable::Channel],
+            Operation::SubmitSharesStandard => vec![
+                Variable::Session(Protocol::Mining),
+                Variable::ChannelId,
+                Variable::SequenceNumber,
+                Variable::JobId,
+                Variable::Nonce,
+                Variable::Ntime,
+                Variable::BlockVersion,
+            ],
+
             Operation::AdvanceTime => vec![Variable::Duration],
 
             Operation::Nop { .. }
@@ -163,6 +225,15 @@ impl Operation {
             | Operation::LoadStr(_)
             | Operation::LoadBytes(_)
             | Operation::LoadDuration(_)
+            | Operation::LoadRequestId(_)
+            | Operation::LoadHashrate(_)
+            | Operation::LoadTarget(_)
+            | Operation::LoadChannelId(_)
+            | Operation::LoadJobId(_)
+            | Operation::LoadSequenceNumber(_)
+            | Operation::LoadNonce(_)
+            | Operation::LoadNtime(_)
+            | Operation::LoadBlockVersion(_)
             | Operation::BeginBuildSetupConnection
             | Operation::Probe => vec![],
         }
@@ -231,6 +302,21 @@ impl fmt::Display for Operation {
                 message_type,
                 extension_type,
             } => write!(f, "SendRawFrame(0x{message_type:02x}, 0x{extension_type:04x})"),
+            Operation::LoadRequestId(v) => write!(f, "LoadRequestId({v})"),
+            Operation::LoadHashrate(v) => {
+                write!(f, "LoadHashrate({})", f32::from_bits(*v))
+            }
+            Operation::LoadTarget(_) => write!(f, "LoadTarget(..)"),
+            Operation::LoadChannelId(v) => write!(f, "LoadChannelId({v})"),
+            Operation::LoadJobId(v) => write!(f, "LoadJobId({v})"),
+            Operation::LoadSequenceNumber(v) => write!(f, "LoadSequenceNumber({v})"),
+            Operation::LoadNonce(v) => write!(f, "LoadNonce({v})"),
+            Operation::LoadNtime(v) => write!(f, "LoadNtime({v})"),
+            Operation::LoadBlockVersion(v) => write!(f, "LoadBlockVersion(0x{v:08x})"),
+            Operation::OpenStandardMiningChannel => write!(f, "OpenStandardMiningChannel"),
+            Operation::ChannelIdOf => write!(f, "ChannelIdOf"),
+            Operation::JobIdOf => write!(f, "JobIdOf"),
+            Operation::SubmitSharesStandard => write!(f, "SubmitSharesStandard"),
             Operation::AdvanceTime => write!(f, "AdvanceTime"),
             Operation::Probe => write!(f, "Probe"),
         }

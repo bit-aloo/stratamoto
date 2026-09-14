@@ -1,3 +1,4 @@
+pub mod mining_channel;
 pub mod raw_frame;
 pub mod setup_connection;
 

@@ -79,7 +79,7 @@ impl<T: Target, R: RngExt> Fuzzer<T, R> {
     pub fn seed(&mut self, context: stratamoto_ir::ProgramContext) {
         for role in 0..self.num_roles {
             let mut builder = stratamoto_ir::ProgramBuilder::new(context.clone());
-            let generator = SetupConnectionGenerator { role };
+            let generator = SetupConnectionGenerator { role, protocol: None };
             if generator.generate(&mut builder, &mut self.rng).is_err() {
                 continue;
             }
@@ -167,7 +167,7 @@ impl<T: Target, R: RngExt> Fuzzer<T, R> {
                 2 => ConcatMutator.mutate(&mut program, &mut self.rng),
                 3 => GeneratorMutator::new(RawFrameGenerator { role })
                     .mutate(&mut program, &mut self.rng),
-                _ => GeneratorMutator::new(SetupConnectionGenerator { role })
+                _ => GeneratorMutator::new(SetupConnectionGenerator { role, protocol: None })
                     .mutate(&mut program, &mut self.rng),
             };
             applied |= result.is_ok();

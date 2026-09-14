@@ -39,6 +39,15 @@ impl Instruction {
                 | Operation::LoadStr(_)
                 | Operation::LoadBytes(_)
                 | Operation::LoadDuration(_)
+                | Operation::LoadRequestId(_)
+                | Operation::LoadHashrate(_)
+                | Operation::LoadTarget(_)
+                | Operation::LoadChannelId(_)
+                | Operation::LoadJobId(_)
+                | Operation::LoadSequenceNumber(_)
+                | Operation::LoadNonce(_)
+                | Operation::LoadNtime(_)
+                | Operation::LoadBlockVersion(_)
                 | Operation::SendRawFrame { .. }
         )
     }

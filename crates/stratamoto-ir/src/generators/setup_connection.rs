@@ -18,6 +18,8 @@ const PROTOCOLS: [Protocol; 3] = [
 pub struct SetupConnectionGenerator {
     /// The role the connection is opened to.
     pub role: usize,
+    /// The subprotocol to set the connection up for, or any of them when unset.
+    pub protocol: Option<Protocol>,
 }
 
 impl<R: RngExt> Generator<R> for SetupConnectionGenerator {
@@ -26,7 +28,9 @@ impl<R: RngExt> Generator<R> for SetupConnectionGenerator {
         builder: &mut ProgramBuilder,
         rng: &mut R,
     ) -> Result<(), ProgramValidationError> {
-        let protocol = *PROTOCOLS.choose(rng).expect("PROTOCOLS is not empty");
+        let protocol = self
+            .protocol
+            .unwrap_or_else(|| *PROTOCOLS.choose(rng).expect("PROTOCOLS is not empty"));
 
         let connection = match builder.get_random_variable(rng, &Variable::Connection) {
             Some(connection) => connection,

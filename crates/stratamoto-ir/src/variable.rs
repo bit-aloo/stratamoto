@@ -70,6 +70,21 @@ pub enum Variable {
     MutSetupConnection,
     /// A finalized `SetupConnection` for a subprotocol.
     ConstSetupConnection(Protocol),
+
+    /// A mining channel the server opened. Its identifiers are not known until it answers, so
+    /// this stands for whatever it assigned rather than for a value the program chose.
+    Channel,
+    /// A channel identifier, either one the server assigned or one the program made up.
+    ChannelId,
+    /// A job identifier, either one the server announced or one the program made up.
+    JobId,
+    RequestId,
+    Hashrate,
+    Target,
+    SequenceNumber,
+    Nonce,
+    Ntime,
+    BlockVersion,
 }
 
 impl std::fmt::Display for Variable {
@@ -87,6 +102,16 @@ impl std::fmt::Display for Variable {
             Variable::Duration => write!(f, "duration"),
             Variable::MutSetupConnection => write!(f, "mut-setup-connection"),
             Variable::ConstSetupConnection(p) => write!(f, "setup-connection<{p}>"),
+            Variable::Channel => write!(f, "channel"),
+            Variable::ChannelId => write!(f, "channel-id"),
+            Variable::JobId => write!(f, "job-id"),
+            Variable::RequestId => write!(f, "request-id"),
+            Variable::Hashrate => write!(f, "hashrate"),
+            Variable::Target => write!(f, "target"),
+            Variable::SequenceNumber => write!(f, "sequence-number"),
+            Variable::Nonce => write!(f, "nonce"),
+            Variable::Ntime => write!(f, "ntime"),
+            Variable::BlockVersion => write!(f, "block-version"),
         }
     }
 }

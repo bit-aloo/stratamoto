@@ -19,7 +19,7 @@ fn context() -> ProgramContext {
 fn seeded(seed: u64) -> Program {
     let mut rng = SmallRng::seed_from_u64(seed);
     let mut builder = ProgramBuilder::new(context());
-    SetupConnectionGenerator { role: 0 }
+    SetupConnectionGenerator { role: 0, protocol: None }
         .generate(&mut builder, &mut rng)
         .unwrap();
     builder.finalize().unwrap()
@@ -32,7 +32,7 @@ fn mutators_never_produce_an_invalid_program() {
     let mut input = InputMutator;
     let mut operation = OperationMutator;
     let mut concat = ConcatMutator;
-    let mut generate = GeneratorMutator::new(SetupConnectionGenerator { role: 1 });
+    let mut generate = GeneratorMutator::new(SetupConnectionGenerator { role: 1, protocol: None });
 
     for seed in 0..200u64 {
         let mut rng = SmallRng::seed_from_u64(seed);

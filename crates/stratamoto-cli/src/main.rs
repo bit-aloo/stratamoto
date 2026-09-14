@@ -49,6 +49,7 @@ fn generate(args: &[String]) -> Result<(), String> {
 
     let generator = SetupConnectionGenerator {
         role: (seed as usize) % num_roles,
+        protocol: None,
     };
     generator.generate(&mut builder, &mut rng).map_err(err)?;
 
