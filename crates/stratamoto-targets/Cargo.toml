@@ -6,6 +6,7 @@ edition.workspace = true
 [dependencies]
 stratamoto.workspace = true
 pool_sv2.workspace = true
+integration_tests_sv2.workspace = true
 stratum-apps = { workspace = true, features = ["config"] }
 tokio.workspace = true
 log.workspace = true

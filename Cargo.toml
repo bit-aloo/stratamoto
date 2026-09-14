@@ -20,6 +20,8 @@ stratum-core = { git = "https://github.com/stratum-mining/stratum", branch = "ma
 # The real roles under test, at the sv2-apps revision whose stratum-core the line above tracks.
 pool_sv2 = { git = "https://github.com/stratum-mining/sv2-apps.git", rev = "ab8f30f1784ea20c2de1b2726c47e7eea10f4556", default-features = false }
 stratum-apps = { git = "https://github.com/stratum-mining/sv2-apps.git", rev = "ab8f30f1784ea20c2de1b2726c47e7eea10f4556" }
+# Their Bitcoin Core and sv2-tp launchers, so templates come from a node rather than from us.
+integration_tests_sv2 = { git = "https://github.com/stratum-mining/sv2-apps.git", rev = "ab8f30f1784ea20c2de1b2726c47e7eea10f4556" }
 tokio = { version = "1.44.1", features = ["rt-multi-thread"] }
 
 env_logger = "0.11.10"

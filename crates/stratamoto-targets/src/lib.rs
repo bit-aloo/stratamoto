@@ -7,7 +7,6 @@ use std::fmt;
 pub enum Error {
     Io(std::io::Error),
     Transport(stratamoto::error::Error),
-    Encoding(String),
     /// The role under test could not be brought to the point of accepting connections.
     Startup(String),
 }
@@ -17,7 +16,6 @@ impl fmt::Display for Error {
         match self {
             Error::Io(e) => write!(f, "io: {e}"),
             Error::Transport(e) => write!(f, "transport: {e}"),
-            Error::Encoding(e) => write!(f, "encoding: {e}"),
             Error::Startup(e) => write!(f, "startup: {e}"),
         }
     }
@@ -34,11 +32,5 @@ impl From<std::io::Error> for Error {
 impl From<stratamoto::error::Error> for Error {
     fn from(e: stratamoto::error::Error) -> Self {
         Error::Transport(e)
-    }
-}
-
-impl From<stratamoto::stratum_core::binary_sv2::Error> for Error {
-    fn from(e: stratamoto::stratum_core::binary_sv2::Error) -> Self {
-        Error::Encoding(format!("{e:?}"))
     }
 }

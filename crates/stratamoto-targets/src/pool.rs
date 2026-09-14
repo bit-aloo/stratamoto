@@ -49,7 +49,7 @@ pub struct PoolDeployment {
     pool: PoolSv2,
     address: SocketAddr,
     roles: Vec<RoleConfig>,
-    _template_provider: TemplateProvider,
+    template_provider: TemplateProvider,
 }
 
 impl PoolDeployment {
@@ -95,7 +95,8 @@ impl PoolDeployment {
             }
         });
 
-        template_provider.wait_until_served(STARTUP_TIMEOUT)?;
+        // The Template Provider is already serving when it returns, so the only thing left to
+        // wait on is the pool taking its first template and opening its door.
         wait_until_accepting(address)?;
 
         Ok(Self {
@@ -103,13 +104,19 @@ impl PoolDeployment {
             pool,
             address,
             roles: vec![RoleConfig::new(Protocol::MiningProtocol)],
-            _template_provider: template_provider,
+            template_provider,
         })
     }
 
     #[must_use]
     pub fn address(&self) -> SocketAddr {
         self.address
+    }
+
+    /// The node behind the pool, for a scenario that needs to move the chain tip.
+    #[must_use]
+    pub fn template_provider(&self) -> &TemplateProvider {
+        &self.template_provider
     }
 }
 

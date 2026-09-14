@@ -1,1 +1,3 @@
 /target
+/template-provider
+crates/*/template-provider
