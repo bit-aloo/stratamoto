@@ -1,0 +1,75 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+# A newer push to the same branch makes the older run pointless.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  fmt:
+    name: format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - run: cargo fmt --all -- --check
+
+  clippy:
+    name: clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+
+  machete:
+    name: unused dependencies
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: bnjbvr/cargo-machete@main
+
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      # Everything that runs on the deterministic simulator, which needs nothing but a
+      # toolchain. The real roles are a separate job because they need a Bitcoin Core node.
+      - run: cargo test --workspace --exclude stratamoto-targets --locked
+
+  real-roles:
+    name: test against sv2-apps' pool
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      # sv2-apps' launchers fetch Bitcoin Core and sv2-tp into this directory when they are
+      # missing, which is most of the job's time on a cold cache.
+      - name: Cache Bitcoin Core and sv2-tp
+        uses: actions/cache@v4
+        with:
+          path: crates/stratamoto-targets/template-provider
+          key: template-provider-${{ runner.os }}-v1
+
+      # The ignored test asserts an unfixed upstream livelock is present and is a race, so it
+      # is deliberately not run here.
+      - run: cargo test -p stratamoto-targets --locked
