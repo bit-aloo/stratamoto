@@ -3,11 +3,16 @@ description: >
   bitcoin-capnp-types compiles its schemas in a build script that shells out to capnp, and the
   runner image does not carry it. Every job that compiles the workspace needs this, including
   the one that excludes the real roles: the scenarios crate depends on the pool regardless.
+
+  libcapnp-dev is needed as well as capnproto. The schemas open with
+  `import "/capnp/c++.capnp"`, which capnp resolves from its standard import path, and Ubuntu
+  ships that file in the development package rather than alongside the compiler.
 runs:
   using: composite
   steps:
     - shell: bash
       run: |
         sudo apt-get update
-        sudo apt-get install -y capnproto
+        sudo apt-get install -y capnproto libcapnp-dev
         capnp --version
+        ls /usr/include/capnp/c++.capnp
