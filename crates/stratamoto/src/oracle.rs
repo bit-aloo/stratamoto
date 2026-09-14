@@ -1,11 +1,13 @@
+use std::collections::HashMap;
+
 use stratamoto_ir::{
     Protocol,
-    compiler::{CompiledProgram, SetupConnectionSpec},
+    compiler::{Action, ChannelSlot, CompiledProgram, ConnectionId, SetupConnectionSpec},
 };
 
 use crate::{
     roles::{RoleConfig, protocol_of},
-    runner::{Execution, SetupResponse},
+    runner::{ChannelOutcome, Execution, SetupResponse},
     transport::Deployment,
 };
 
@@ -103,6 +105,103 @@ impl Oracle for CrashOracle {
     fn name(&self) -> &'static str {
         "CrashOracle"
     }
+}
+
+/// Every `OpenStandardMiningChannel` is answered in a way the mining protocol allows.
+///
+/// The identifiers belong to the server, so what can be checked is that it kept its own
+/// bookkeeping straight: an answer names the request it belongs to, and two channels open at
+/// once on a connection are not the same channel.
+pub struct MiningChannelOracle;
+
+impl Oracle for MiningChannelOracle {
+    fn evaluate<D: Deployment>(
+        &self,
+        _deployment: &D,
+        program: &CompiledProgram,
+        execution: &Execution,
+    ) -> OracleResult {
+        let mut assigned: HashMap<(ConnectionId, u32), ChannelSlot> = HashMap::new();
+
+        for (slot, outcome) in &execution.channels {
+            let Some(open) = program.metadata.channel_opens.get(slot) else {
+                return OracleResult::Fail(format!("channel {slot} has no recorded open"));
+            };
+
+            match outcome {
+                ChannelOutcome::Silence => {
+                    // A server may drop a client that sent it something it does not accept, so
+                    // once the program has put a frame of its own choosing on the connection,
+                    // silence afterwards is the client's doing and not a violation.
+                    if !open_context(program, *slot).1 {
+                        return OracleResult::Fail(format!(
+                            "the open of channel {slot} was never answered"
+                        ));
+                    }
+                }
+                ChannelOutcome::Unexpected { message_type } => {
+                    return OracleResult::Fail(format!(
+                        "the open of channel {slot} was answered with message type \
+                         0x{message_type:02x}, which opens nothing"
+                    ));
+                }
+                ChannelOutcome::Error { request_id, .. } => {
+                    if *request_id != open.request_id {
+                        return OracleResult::Fail(format!(
+                            "the error for channel {slot} names request {request_id}, not the \
+                             request {} it answers",
+                            open.request_id
+                        ));
+                    }
+                }
+                ChannelOutcome::Success {
+                    request_id,
+                    channel_id,
+                    ..
+                } => {
+                    if *request_id != open.request_id {
+                        return OracleResult::Fail(format!(
+                            "the success for channel {slot} names request {request_id}, not the \
+                             request {} it answers",
+                            open.request_id
+                        ));
+                    }
+
+                    let connection = open_context(program, *slot).0;
+                    if let Some(previous) = assigned.insert((connection, *channel_id), *slot) {
+                        return OracleResult::Fail(format!(
+                            "channel id {channel_id} was given to both channel {previous} and \
+                             channel {slot} on the same connection"
+                        ));
+                    }
+                }
+            }
+        }
+
+        OracleResult::Pass
+    }
+
+    fn name(&self) -> &'static str {
+        "MiningChannelOracle"
+    }
+}
+
+/// The connection a channel was opened on, and whether the program had already put a frame of
+/// its own choosing on that connection, taken from the action that opened it.
+fn open_context(program: &CompiledProgram, slot: ChannelSlot) -> (ConnectionId, bool) {
+    program
+        .actions
+        .iter()
+        .find_map(|action| match action {
+            Action::OpenStandardMiningChannel {
+                connection,
+                channel,
+                after_raw_frame,
+                ..
+            } if *channel == slot => Some((*connection, *after_raw_frame)),
+            _ => None,
+        })
+        .unwrap_or((ConnectionId::MAX, false))
 }
 
 /// Why `response` is not an answer to `spec` that a role configured as `config` may give.

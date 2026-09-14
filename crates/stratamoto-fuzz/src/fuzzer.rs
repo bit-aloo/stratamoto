@@ -2,7 +2,8 @@ use rand::RngExt;
 use stratamoto_ir::{
     Program,
     generators::{
-        Generator, raw_frame::RawFrameGenerator, setup_connection::SetupConnectionGenerator,
+        Generator, mining_channel::MiningChannelGenerator, raw_frame::RawFrameGenerator,
+        setup_connection::SetupConnectionGenerator,
     },
     minimizers::{
         Minimizer, block::BlockMinimizer, cutting::CuttingMinimizer, nopping::NoppingMinimizer,
@@ -161,11 +162,13 @@ impl<T: Target, R: RngExt> Fuzzer<T, R> {
 
         for _ in 0..rounds {
             let role = self.rng.random_range(0..self.num_roles);
-            let result = match self.rng.random_range(0..5u8) {
+            let result = match self.rng.random_range(0..6u8) {
                 0 => InputMutator.mutate(&mut program, &mut self.rng),
                 1 => OperationMutator.mutate(&mut program, &mut self.rng),
                 2 => ConcatMutator.mutate(&mut program, &mut self.rng),
                 3 => GeneratorMutator::new(RawFrameGenerator { role })
+                    .mutate(&mut program, &mut self.rng),
+                4 => GeneratorMutator::new(MiningChannelGenerator { role })
                     .mutate(&mut program, &mut self.rng),
                 _ => GeneratorMutator::new(SetupConnectionGenerator { role, protocol: None })
                     .mutate(&mut program, &mut self.rng),

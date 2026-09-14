@@ -1,5 +1,6 @@
 use stratamoto::{
     error::{Error, Result},
+    oracle::{MiningChannelOracle, Oracle, OracleResult},
     runner::{self, Execution},
     scenario::{Scenario, ScenarioResult},
     transport::Deployment,
@@ -41,7 +42,19 @@ impl PoolSetupConnectionScenario {
         }
 
         let execution = runner::run(&self.deployment, &testcase.program);
-        let result = crate::setup_connection::evaluate(&self.deployment, &testcase.program, &execution);
+
+        // The mining oracle applies here and not to the mock roles, which do not implement
+        // mining: an unanswered channel open says something about a pool and nothing about a
+        // role that was never asked to serve one.
+        let oracle = MiningChannelOracle;
+        if let OracleResult::Fail(e) = oracle.evaluate(&self.deployment, &testcase.program, &execution)
+        {
+            let result = ScenarioResult::Fail(format!("{}: {e}", oracle.name()));
+            return (execution, result);
+        }
+
+        let result =
+            crate::setup_connection::evaluate(&self.deployment, &testcase.program, &execution);
         (execution, result)
     }
 }
