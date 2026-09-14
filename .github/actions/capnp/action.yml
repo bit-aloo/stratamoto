@@ -1,0 +1,13 @@
+name: Install Cap'n Proto
+description: >
+  bitcoin-capnp-types compiles its schemas in a build script that shells out to capnp, and the
+  runner image does not carry it. Every job that compiles the workspace needs this, including
+  the one that excludes the real roles: the scenarios crate depends on the pool regardless.
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y capnproto
+        capnp --version

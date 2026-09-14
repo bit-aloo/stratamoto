@@ -29,6 +29,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/capnp
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
@@ -45,12 +46,15 @@ jobs:
   test:
     name: test
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/capnp
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      # Everything that runs on the deterministic simulator, which needs nothing but a
-      # toolchain. The real roles are a separate job because they need a Bitcoin Core node.
+      # Everything that runs on the deterministic simulator. The real roles are excluded
+      # because they need a Bitcoin Core node, not because the build is any lighter: the
+      # scenarios crate depends on the pool either way.
       - run: cargo test --workspace --exclude stratamoto-targets --locked
 
   real-roles:
@@ -59,6 +63,7 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/capnp
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
 
