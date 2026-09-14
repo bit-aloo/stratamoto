@@ -1,10 +1,18 @@
-use stratamoto_ir::compiler::{CompiledProgram, SetupConnectionSpec};
+use stratamoto_ir::{
+    Protocol,
+    compiler::{CompiledProgram, SetupConnectionSpec},
+};
 
 use crate::{
-    transport::Deployment,
     roles::{RoleConfig, protocol_of},
     runner::{Execution, SetupResponse},
+    transport::Deployment,
 };
+
+/// `REQUIRES_VERSION_ROLLING`, bit 2 of a mining `SetupConnection.flags` (section 5.3.1).
+pub const MINING_REQUIRES_VERSION_ROLLING: u32 = 1 << 2;
+/// `REQUIRES_FIXED_VERSION`, bit 0 of a mining `SetupConnection.Success.flags` (section 5.3.1).
+pub const MINING_SUCCESS_REQUIRES_FIXED_VERSION: u32 = 1 << 0;
 
 pub enum OracleResult {
     Pass,
@@ -23,10 +31,12 @@ pub trait Oracle {
     fn name(&self) -> &'static str;
 }
 
-/// Every `SetupConnection` is answered, and answered the way section 3.6 requires.
+/// Every `SetupConnection` is answered, and answered in a way the specification allows.
 ///
-/// The expectation is derived from the specification rather than from the role's own code,
-/// so that the check still means something once the role is a real implementation.
+/// Error codes are deliberately not compared: section 3.5 lets each implementation choose its
+/// own, so asserting on one would test an implementation's choices rather than its
+/// conformance. Likewise a server may accept flags it does not act on; only an explicit
+/// requirement of the specification is a failure.
 pub struct SetupConnectionOracle;
 
 impl Oracle for SetupConnectionOracle {
@@ -50,10 +60,9 @@ impl Oracle for SetupConnectionOracle {
                 return OracleResult::Fail(format!("session {id} is on unknown role {role}"));
             };
 
-            let expected = expected_response(config, spec);
-            if session.response != expected {
+            if let Err(violation) = check(config, spec, &session.response) {
                 return OracleResult::Fail(format!(
-                    "role {role} answered {:?} to {spec:?}, expected {expected:?}",
+                    "role {role} answered {:?} to {spec:?}: {violation}",
                     session.response
                 ));
             }
@@ -67,45 +76,65 @@ impl Oracle for SetupConnectionOracle {
     }
 }
 
-/// The answer the common protocol requires, per specification section 3.6.
-///
-/// A server that cannot set up the connection answers `SetupConnection.Error` before closing,
-/// and must report the full set of flags it does not support. `flags` is 0 when the refusal
-/// has another cause.
-#[must_use]
-pub fn expected_response(config: &RoleConfig, spec: &SetupConnectionSpec) -> SetupResponse {
-    use stratum_core::common_messages_sv2::{
-        ERROR_CODE_SETUP_CONNECTION_PROTOCOL_VERSION_MISMATCH,
-        ERROR_CODE_SETUP_CONNECTION_UNSUPPORTED_FEATURE_FLAGS,
-        ERROR_CODE_SETUP_CONNECTION_UNSUPPORTED_PROTOCOL,
+/// Why `response` is not an answer to `spec` that a role configured as `config` may give.
+pub fn check(
+    config: &RoleConfig,
+    spec: &SetupConnectionSpec,
+    response: &SetupResponse,
+) -> Result<(), String> {
+    let (used_version, flags) = match response {
+        SetupResponse::Silence => {
+            return Err(
+                "the server MUST respond with SetupConnection.Success or SetupConnection.Error"
+                    .to_string(),
+            );
+        }
+        SetupResponse::Unexpected { message_type } => {
+            return Err(format!(
+                "the answer has message type 0x{message_type:02x}, which is neither \
+                 SetupConnection.Success nor SetupConnection.Error"
+            ));
+        }
+        SetupResponse::Error { .. } => return Ok(()),
+        SetupResponse::Success {
+            used_version,
+            flags,
+        } => (*used_version, *flags),
     };
 
+    if !(spec.min_version..=spec.max_version).contains(&used_version) {
+        return Err(format!(
+            "used_version {used_version} is not a version the client proposed ({}..={})",
+            spec.min_version, spec.max_version
+        ));
+    }
+
+    if spec.protocol == Protocol::Mining
+        && flags & MINING_SUCCESS_REQUIRES_FIXED_VERSION != 0
+        && spec.flags & MINING_REQUIRES_VERSION_ROLLING != 0
+    {
+        return Err(
+            "REQUIRES_FIXED_VERSION MUST NOT be set when the client set REQUIRES_VERSION_ROLLING"
+                .to_string(),
+        );
+    }
+
+    // What follows is not the specification but what the deployment says of the role: a role
+    // that accepts a subprotocol it does not serve, or settles on a version it does not
+    // support, has agreed to something it cannot do.
     if protocol_of(spec.protocol) != config.protocol {
-        return SetupResponse::Error {
-            flags: 0,
-            error_code: ERROR_CODE_SETUP_CONNECTION_UNSUPPORTED_PROTOCOL.to_string(),
-        };
+        return Err(format!(
+            "accepted a {} connection on a role that serves {:?}",
+            spec.protocol, config.protocol
+        ));
     }
 
-    // Version negotiation picks the highest version both ends support.
-    let used_version = spec.max_version.min(config.max_version);
-    if used_version < spec.min_version || used_version < config.min_version {
-        return SetupResponse::Error {
-            flags: 0,
-            error_code: ERROR_CODE_SETUP_CONNECTION_PROTOCOL_VERSION_MISMATCH.to_string(),
-        };
+    if !(config.min_version..=config.max_version).contains(&used_version) {
+        return Err(format!(
+            "used_version {used_version} is not a version the role supports ({}..={})",
+            config.min_version, config.max_version
+        ));
     }
 
-    let unsupported = spec.flags & !config.supported_flags;
-    if unsupported != 0 {
-        return SetupResponse::Error {
-            flags: unsupported,
-            error_code: ERROR_CODE_SETUP_CONNECTION_UNSUPPORTED_FEATURE_FLAGS.to_string(),
-        };
-    }
-
-    SetupResponse::Success {
-        used_version,
-        flags: config.supported_flags,
-    }
+    Ok(())
 }
