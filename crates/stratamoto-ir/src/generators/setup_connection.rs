@@ -43,6 +43,26 @@ impl<R: RngExt> Generator<R> for SetupConnectionGenerator {
         let setup = one(builder.append_op(Operation::BeginBuildSetupConnection, &[])?);
         builder.append_op(Operation::SetVersions, &[&setup, &min_version, &max_version])?;
         builder.append_op(Operation::SetFlags, &[&setup, &flags])?;
+
+        // The remaining fields are set only sometimes, so that both shapes are in the corpus.
+        // They start at the values a client would send, and are worth setting at all because a
+        // field no operation writes is a field no mutation can ever reach.
+        if rng.random_bool(0.5) {
+            let host = one(builder.append_op(Operation::LoadStr("0.0.0.0".to_string()), &[])?);
+            let port = one(builder.append_op(Operation::LoadPort(0), &[])?);
+            builder.append_op(Operation::SetEndpoint, &[&setup, &host, &port])?;
+        }
+
+        if rng.random_bool(0.5) {
+            let vendor = one(builder.append_op(Operation::LoadStr("stratamoto".to_string()), &[])?);
+            let hardware = one(builder.append_op(Operation::LoadStr(String::new()), &[])?);
+            let firmware = one(builder.append_op(Operation::LoadStr(String::new()), &[])?);
+            let device = one(builder.append_op(Operation::LoadStr(String::new()), &[])?);
+            builder.append_op(
+                Operation::SetDeviceInfo,
+                &[&setup, &vendor, &hardware, &firmware, &device],
+            )?;
+        }
         let setup = one(builder.append_op(
             Operation::EndBuildSetupConnection { protocol },
             &[&setup],
