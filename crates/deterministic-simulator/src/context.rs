@@ -3,8 +3,8 @@ use std::{cell::RefCell, net::SocketAddr};
 use crate::Handle;
 
 thread_local! {
-    static CONTEXT: RefCell<Option<Handle>> = RefCell::new(None);
-    static ADDR: RefCell<Option<SocketAddr>> = RefCell::new(None);
+    static CONTEXT: RefCell<Option<Handle>> = const { RefCell::new(None) };
+    static ADDR: RefCell<Option<SocketAddr>> = const { RefCell::new(None) };
 }
 
 pub(crate) fn current() -> Option<Handle> {

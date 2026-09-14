@@ -83,6 +83,12 @@ pub struct Executor {
     time: TimeRuntime,
 }
 
+impl Default for Executor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Executor {
     pub fn new() -> Self {
         let (sender, queue) = mpsc::channel();

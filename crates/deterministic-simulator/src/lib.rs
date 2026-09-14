@@ -16,11 +16,21 @@ pub struct Runtime {
 
 #[derive(Clone)]
 pub struct Handle {
+    #[allow(
+        dead_code,
+        reason = "carried for symmetry with the other local handles"
+    )]
     rand: rand::RandomHandle,
     time: time::TimeHandle,
     task: task::TaskHandle,
     net: net::NetworkHandle,
     fs: fs::FileSystemHandle,
+}
+
+impl Default for Runtime {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl Runtime {

@@ -22,7 +22,7 @@ impl Eq for Event {}
 
 impl PartialOrd for Event {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        other.deadline.partial_cmp(&self.deadline)
+        Some(self.cmp(other))
     }
 }
 

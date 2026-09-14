@@ -90,14 +90,11 @@ impl<T: Target, R: RngExt> Fuzzer<T, R> {
             let Ok(program) = builder.finalize() else {
                 continue;
             };
-            match self.target.run(&program) {
-                Outcome::Ok { signature } => {
-                    if self.corpus.add(program, signature) {
-                        self.stats.corpus_additions += 1;
-                    }
-                }
-                // A seed that already fails is reported by the caller's own run.
-                _ => {}
+            // A seed that already fails is reported by the caller's own run.
+            if let Outcome::Ok { signature } = self.target.run(&program)
+                && self.corpus.add(program, signature)
+            {
+                self.stats.corpus_additions += 1;
             }
         }
     }
@@ -106,9 +103,7 @@ impl<T: Target, R: RngExt> Fuzzer<T, R> {
     pub fn run_one(&mut self) -> Option<Failure> {
         self.stats.iterations += 1;
 
-        let Some(program) = self.corpus.pick(&mut self.rng).cloned() else {
-            return None;
-        };
+        let program = self.corpus.pick(&mut self.rng).cloned()?;
         let Some(mutated) = self.mutate(program) else {
             self.stats.rejected += 1;
             return None;

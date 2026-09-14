@@ -29,7 +29,12 @@ pub struct FileSystemLocalHandle {
 #[derive(Clone)]
 pub struct FileSystemHandle {
     handles: Arc<Mutex<HashMap<SocketAddr, FileSystemLocalHandle>>>,
+    #[allow(
+        dead_code,
+        reason = "kept for faults the filesystem does not inject yet"
+    )]
     rand: RandomHandle,
+    #[allow(dead_code, reason = "kept for latency the filesystem does not add yet")]
     time: TimeHandle,
 }
 

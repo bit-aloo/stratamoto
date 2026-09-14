@@ -55,15 +55,27 @@ impl Network {
         receiver
     }
 
+    #[allow(
+        dead_code,
+        reason = "fault injection the network offers, not yet reachable from a handle"
+    )]
     pub fn remove(&mut self, target: &SocketAddr) {
         self.endpoints.remove(target);
         self.clogged.remove(target);
     }
 
+    #[allow(
+        dead_code,
+        reason = "fault injection the network offers, not yet reachable from a handle"
+    )]
     pub fn clog(&mut self, target: &SocketAddr) {
         self.clogged.insert(*target);
     }
 
+    #[allow(
+        dead_code,
+        reason = "fault injection the network offers, not yet reachable from a handle"
+    )]
     pub fn unclog(&mut self, target: SocketAddr) {
         self.clogged.insert(target);
     }
