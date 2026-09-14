@@ -2,9 +2,9 @@ use std::collections::BTreeSet;
 
 use rand::{RngExt, SeedableRng, rngs::SmallRng};
 use stratamoto_ir::{
-    Program, ProgramBuilder, ProgramContext,
+    Operation, Program, ProgramBuilder, ProgramContext,
     compiler::{Compiler, SetupConnectionSpec},
-    generators::{Generator, setup_connection::SetupConnectionGenerator},
+    generators::{Generator, raw_frame::RawFrameGenerator, setup_connection::SetupConnectionGenerator},
     mutators::{
         Mutator, concat::ConcatMutator, generate::GeneratorMutator, input::InputMutator,
         operation::OperationMutator,
@@ -13,8 +13,9 @@ use stratamoto_ir::{
 
 const ROLES: usize = 3;
 
-/// Every distinct `SetupConnection` a campaign puts on the wire.
-fn reached(rounds: usize) -> Vec<SetupConnectionSpec> {
+/// Every distinct `SetupConnection` a campaign puts on the wire, plus whether it ever sent a
+/// raw frame.
+fn reached(rounds: usize) -> (Vec<SetupConnectionSpec>, bool) {
     let context = ProgramContext {
         num_roles: ROLES,
         num_connections: 0,
@@ -29,6 +30,7 @@ fn reached(rounds: usize) -> Vec<SetupConnectionSpec> {
     let mut corpus: Vec<Program> = vec![builder.finalize().unwrap()];
 
     let mut specs = Vec::new();
+    let mut raw_frames = false;
 
     for _ in 0..rounds {
         let pick = rng.random_range(0..corpus.len());
@@ -37,10 +39,11 @@ fn reached(rounds: usize) -> Vec<SetupConnectionSpec> {
         let mut applied = false;
         for _ in 0..rng.random_range(1..=4u32) {
             let role = rng.random_range(0..ROLES);
-            let result = match rng.random_range(0..4u8) {
+            let result = match rng.random_range(0..5u8) {
                 0 => InputMutator.mutate(&mut program, &mut rng),
                 1 => OperationMutator.mutate(&mut program, &mut rng),
                 2 => ConcatMutator.mutate(&mut program, &mut rng),
+                3 => GeneratorMutator::new(RawFrameGenerator { role }).mutate(&mut program, &mut rng),
                 _ => GeneratorMutator::new(SetupConnectionGenerator { role })
                     .mutate(&mut program, &mut rng),
             };
@@ -50,6 +53,11 @@ fn reached(rounds: usize) -> Vec<SetupConnectionSpec> {
             continue;
         }
 
+        raw_frames |= program
+            .instructions
+            .iter()
+            .any(|i| matches!(i.operation, Operation::SendRawFrame { .. }));
+
         if let Ok(compiled) = Compiler::new().compile(&program) {
             specs.extend(compiled.metadata.session_setups.values().cloned());
         }
@@ -58,7 +66,7 @@ fn reached(rounds: usize) -> Vec<SetupConnectionSpec> {
         }
     }
 
-    specs
+    (specs, raw_frames)
 }
 
 /// A field no operation writes is a field no mutation can reach, so every field of the message
@@ -66,7 +74,7 @@ fn reached(rounds: usize) -> Vec<SetupConnectionSpec> {
 /// information never varying at all.
 #[test]
 fn mutation_reaches_every_setup_connection_field() {
-    let specs = reached(5_000);
+    let (specs, raw_frames) = reached(5_000);
     assert!(!specs.is_empty(), "no programs compiled");
 
     let distinct = |f: fn(&SetupConnectionSpec) -> String| {
@@ -87,4 +95,6 @@ fn mutation_reaches_every_setup_connection_field() {
     ] {
         assert!(count > 1, "{field} never varied: {count} distinct value");
     }
+
+    assert!(raw_frames, "no raw frame was ever generated");
 }
