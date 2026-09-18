@@ -1569,19 +1569,6 @@ version = "2.0.0"
 source = "git+https://github.com/stratum-mining/stratum?branch=main#09d59795390e5a1f86953860dd759a74bddf93fe"
 
 [[package]]
-name = "deterministic-simulator"
-version = "0.1.0"
-dependencies = [
- "async-channel 2.5.0",
- "async-task",
- "bytes",
- "env_logger",
- "futures",
- "log",
- "rand 0.8.8",
-]
-
-[[package]]
 name = "digest"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4010,8 +3997,8 @@ name = "stratamoto"
 version = "0.1.0"
 dependencies = [
  "bs58 0.5.1",
- "deterministic-simulator",
  "log",
+ "stratamoto-dst",
  "stratamoto-ir",
  "stratum-core",
 ]
@@ -4023,6 +4010,20 @@ dependencies = [
  "postcard",
  "rand 0.10.1",
  "stratamoto-ir",
+]
+
+[[package]]
+name = "stratamoto-dst"
+version = "0.1.0"
+dependencies = [
+ "async-channel 2.5.0",
+ "async-task",
+ "bytes",
+ "env_logger",
+ "futures",
+ "log",
+ "rand 0.8.8",
+ "stratamoto-macros",
 ]
 
 [[package]]
@@ -4045,6 +4046,15 @@ dependencies = [
  "rand 0.10.1",
  "serde",
  "stratum-core",
+]
+
+[[package]]
+name = "stratamoto-macros"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 1.0.109",
 ]
 
 [[package]]
@@ -4186,6 +4196,17 @@ dependencies = [
  "serde",
  "serde_json",
  "tracing",
+]
+
+[[package]]
+name = "syn"
+version = "1.0.109"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "72b64191b275b66ffe2469e8af2c1cfe3bafa67b529ead792a6d0160888b4237"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "unicode-ident",
 ]
 
 [[package]]

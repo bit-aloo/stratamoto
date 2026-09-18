@@ -18,7 +18,7 @@ the same conformance checks apply to both.
 
 | crate | what it is |
 | --- | --- |
-| [`deterministic-simulator`](crates/deterministic-simulator) | the runtime: a seeded executor, clock, network and filesystem |
+| [`stratamoto-dst`](crates/stratamoto-dst) | the runtime: a seeded executor, clock, network and filesystem |
 | [`stratamoto-ir`](crates/stratamoto-ir) | the programs: typed variables, operations, builder, compiler, generators, mutators, minimizers |
 | [`stratamoto`](crates/stratamoto) | the harness: transports, deployments, the runner and the oracles |
 | [`stratamoto-targets`](crates/stratamoto-targets) | the real roles: sv2-apps' pool, against Bitcoin Core |

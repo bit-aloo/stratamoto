@@ -1,24 +1,32 @@
-use std::{sync::{Arc, Mutex}, task::Poll, time::Duration};
+use std::{
+    sync::{Arc, Mutex},
+    task::Poll,
+    time::Duration,
+};
 
 use futures::{FutureExt, future::poll_fn, select};
 
-use crate::time::{instant::Instant, timer::Timer};
-
-
+use crate::time::timer::Timer;
 
 mod instant;
+pub use instant::Instant;
 mod timer;
 
-
 pub struct TimeRuntime {
-    handle: TimeHandle
+    handle: TimeHandle,
+}
+
+impl Default for TimeRuntime {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl TimeRuntime {
     pub fn new() -> Self {
         let handle = TimeHandle {
             timer: Arc::new(Mutex::new(Timer::default())),
-            clock: ClockHandle::new()
+            clock: ClockHandle::new(),
         };
         TimeRuntime { handle }
     }
@@ -39,11 +47,10 @@ impl TimeRuntime {
     }
 }
 
-
 #[derive(Clone)]
 pub struct TimeHandle {
     timer: Arc<Mutex<Timer>>,
-    clock: ClockHandle
+    clock: ClockHandle,
 }
 
 impl TimeHandle {
@@ -51,11 +58,11 @@ impl TimeHandle {
         self.clock.now()
     }
 
-    pub fn sleep(&self, duration: Duration) -> impl Future<Output = ()> {
+    pub fn sleep(&self, duration: Duration) -> impl Future<Output = ()> + use<> {
         self.sleep_until(self.clock.now() + duration)
     }
 
-    pub fn sleep_until(&self, deadline: Instant) -> impl Future<Output = ()> {
+    pub fn sleep_until(&self, deadline: Instant) -> impl Future<Output = ()> + use<> {
         let handle = self.clone();
         poll_fn(move |cx| {
             if handle.clock.now() >= deadline {
@@ -65,11 +72,14 @@ impl TimeHandle {
             let waker = cx.waker().clone();
             handle.add_timer(deadline, || waker.wake());
             Poll::Pending
-
         })
     }
 
-    pub fn timeout<T: Future>(&self, duration: Duration, future: T) -> impl Future<Output = Result<T::Output, Elapsed>> {
+    pub fn timeout<T: Future>(
+        &self,
+        duration: Duration,
+        future: T,
+    ) -> impl Future<Output = Result<T::Output, Elapsed>> + use<T> {
         let timeout = self.sleep(duration);
         async move {
             select! {
@@ -93,37 +103,39 @@ pub fn sleep(duration: Duration) -> impl Future<Output = ()> {
     handle.sleep(duration)
 }
 
-
 pub fn sleep_until(deadline: Instant) -> impl Future<Output = ()> {
     let handle = crate::context::time_handle();
     handle.sleep_until(deadline)
 }
 
-pub fn timeout<T: Future>(duration: Duration, future: T) -> impl Future<Output = Result<T::Output, Elapsed>> {
+pub fn timeout<T: Future>(
+    duration: Duration,
+    future: T,
+) -> impl Future<Output = Result<T::Output, Elapsed>> {
     let handle = crate::context::time_handle();
     handle.timeout(duration, future)
 }
 
-
 #[derive(Debug)]
 struct Clock {
     base: std::time::Instant,
-    advance: Duration
+    advance: Duration,
 }
 
 #[derive(Clone)]
 struct ClockHandle {
-    inner: Arc<Mutex<Clock>>
+    inner: Arc<Mutex<Clock>>,
 }
-
 
 impl ClockHandle {
     fn new() -> Self {
-        let clock =  Clock {
+        let clock = Clock {
             base: std::time::Instant::now(),
-            advance: Duration::default()
+            advance: Duration::default(),
         };
-        ClockHandle { inner: Arc::new(Mutex::new(clock)) }
+        ClockHandle {
+            inner: Arc::new(Mutex::new(clock)),
+        }
     }
 
     fn set(&self, time: Instant) {

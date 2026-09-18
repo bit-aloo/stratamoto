@@ -20,7 +20,6 @@ impl RandomHandle {
     }
 }
 
-
 pub fn rng() -> RandomHandle {
     crate::context::rand_handle()
 }

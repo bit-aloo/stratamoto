@@ -1,5 +1,8 @@
 use std::{
-    collections::{HashMap, HashSet}, net::SocketAddr, ops::Range, time::Duration,
+    collections::{HashMap, HashSet},
+    net::SocketAddr,
+    ops::Range,
+    time::Duration,
 };
 
 use async_channel::{Receiver, Sender};
@@ -26,13 +29,16 @@ pub struct Config {
 
 impl Default for Config {
     fn default() -> Self {
-        Config { packet_loss_rate: 0.0, send_latency: Duration::from_millis(1)..Duration::from_millis(10) }
+        Config {
+            packet_loss_rate: 0.0,
+            send_latency: Duration::from_millis(1)..Duration::from_millis(10),
+        }
     }
 }
 
 #[derive(Debug, Default, Clone)]
 pub struct Stat {
-    pub msg_count: u64
+    pub msg_count: u64,
 }
 
 pub struct Message {

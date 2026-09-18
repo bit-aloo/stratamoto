@@ -3,7 +3,7 @@ use std::{
     time::Duration,
 };
 
-use deterministic_simulator::Runtime;
+use stratamoto_dst::Runtime;
 
 use crate::{
     connection::{Connection, Frame},
@@ -78,8 +78,7 @@ impl DeploymentTrait for SimulatedDeployment {
     }
 
     fn advance_time(&self, duration: Duration) {
-        self.runtime
-            .block_on(deterministic_simulator::time::sleep(duration));
+        self.runtime.block_on(stratamoto_dst::time::sleep(duration));
     }
 }
 

@@ -1,6 +1,6 @@
 use std::{net::SocketAddr, time::Duration};
 
-use deterministic_simulator::net::NetworkLocalHandle;
+use stratamoto_dst::net::NetworkLocalHandle;
 use stratum_core::{
     framing_sv2::{
         framing::{EncodableFrame, MessageFrame, SerializedFrame},
@@ -124,7 +124,7 @@ impl Connection {
 
     /// Await the next frame, or give up after `timeout`.
     pub async fn recv_timeout(&mut self, timeout: Duration) -> Result<Frame> {
-        match deterministic_simulator::time::timeout(timeout, self.net.recv()).await {
+        match stratamoto_dst::time::timeout(timeout, self.net.recv()).await {
             Ok(received) => {
                 let (bytes, _, from) = received?;
                 self.peer = Some(from);

@@ -1,14 +1,11 @@
 use std::{fmt, ops, time::Duration};
 
-
-
 /// A measurement of a monotonically non decreasing clock.
 /// Opaque and useful only with `Duration`.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Instant {
-    std: std::time::Instant 
+    std: std::time::Instant,
 }
-
 
 impl Instant {
     pub fn now() -> Instant {
@@ -47,7 +44,6 @@ impl Instant {
     pub fn checked_sub(&self, duration: Duration) -> Option<Instant> {
         self.std.checked_sub(duration).map(Instant::from_std)
     }
-    
 }
 
 impl From<std::time::Instant> for Instant {
@@ -69,8 +65,6 @@ impl std::ops::Add<Duration> for Instant {
         Instant::from_std(self.std + rhs)
     }
 }
-
-
 
 impl ops::AddAssign<Duration> for Instant {
     fn add_assign(&mut self, rhs: Duration) {

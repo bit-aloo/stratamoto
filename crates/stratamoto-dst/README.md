@@ -1,4 +1,4 @@
-# deterministic-simulator
+# stratamoto-dst
 
 The runtime the simulated roles run on. Everything that would otherwise be a source of
 nondeterminism — task scheduling, the clock, the network, the filesystem, randomness — comes
@@ -17,7 +17,7 @@ from here and is driven by a seed, so a run is a pure function of that seed and 
 ## Using it
 
 ```rust
-use deterministic_simulator::Runtime;
+use stratamoto_dst::Runtime;
 
 let runtime = Runtime::new_with_seed(7);
 let handle = runtime.local_handle("10.0.0.1:34254".parse().unwrap());

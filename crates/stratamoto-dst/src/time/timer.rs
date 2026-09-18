@@ -2,7 +2,6 @@ use std::collections::BinaryHeap;
 
 use crate::time::instant::Instant;
 
-
 #[derive(Default)]
 pub struct Timer {
     queue: BinaryHeap<Event>,
@@ -10,7 +9,10 @@ pub struct Timer {
 
 impl Timer {
     pub fn push(&mut self, deadline: Instant, callback: impl FnOnce() + Send + Sync + 'static) {
-        self.queue.push(Event { deadline, callback: Box::new(callback) });
+        self.queue.push(Event {
+            deadline,
+            callback: Box::new(callback),
+        });
     }
 
     pub fn next_time(&self) -> Option<Instant> {
@@ -28,10 +30,9 @@ impl Timer {
     }
 }
 
-
 struct Event {
     deadline: Instant,
-    callback: Box<dyn FnOnce() + Send + Sync + 'static>
+    callback: Box<dyn FnOnce() + Send + Sync + 'static>,
 }
 
 impl PartialEq for Event {
@@ -44,7 +45,7 @@ impl Eq for Event {}
 
 impl PartialOrd for Event {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        other.deadline.partial_cmp(&self.deadline)
+        Some(self.cmp(other))
     }
 }
 

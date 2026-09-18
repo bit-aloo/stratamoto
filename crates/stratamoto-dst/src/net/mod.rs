@@ -1,5 +1,7 @@
 use std::{
-    io, net::SocketAddr, sync::{Arc, Mutex},
+    io,
+    net::SocketAddr,
+    sync::{Arc, Mutex},
 };
 
 use bytes::Bytes;
@@ -7,7 +9,9 @@ use bytes::Bytes;
 use log::trace;
 
 use crate::{
-    net::network::{Message, Network, Stat}, rand::RandomHandle, time::TimeHandle,
+    net::network::{Message, Network, Stat},
+    rand::RandomHandle,
+    time::TimeHandle,
 };
 
 mod network;

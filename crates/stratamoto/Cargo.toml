@@ -5,7 +5,7 @@ edition.workspace = true
 readme = "README.md"
 
 [dependencies]
-deterministic-simulator.workspace = true
+stratamoto-dst.workspace = true
 stratamoto-ir.workspace = true
 stratum-core.workspace = true
 log.workspace = true
