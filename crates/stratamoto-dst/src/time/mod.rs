@@ -54,6 +54,14 @@ pub struct TimeHandle {
 }
 
 impl TimeHandle {
+    pub fn try_current() -> Option<Self> {
+        crate::context::try_time_handle()
+    }
+
+    pub fn elapsed(&self) -> Duration {
+        self.clock.elapsed()
+    }
+
     pub fn now(&self) -> Instant {
         self.clock.now()
     }
@@ -146,5 +154,10 @@ impl ClockHandle {
     fn now(&self) -> Instant {
         let inner = self.inner.lock().unwrap();
         Instant::from_std(inner.base + inner.advance)
+    }
+
+    fn elapsed(&self) -> Duration {
+        let inner = self.inner.lock().unwrap();
+        inner.advance
     }
 }

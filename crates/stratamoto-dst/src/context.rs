@@ -20,6 +20,10 @@ pub(crate) fn task_local_handle() -> crate::task::TaskLocalHandle {
     CONTEXT.with(|ctx| ctx.borrow().as_ref().unwrap().task.local_handle(addr))
 }
 
+pub fn try_time_handle() -> Option<crate::time::TimeHandle> {
+    CONTEXT.with(|ctx| ctx.borrow().as_ref().map(|h| h.time.clone()))
+}
+
 pub(crate) fn net_local_handle() -> crate::net::NetworkLocalHandle {
     let addr = ADDR.with(|addr| addr.borrow().unwrap());
     CONTEXT.with(|ctx| ctx.borrow().as_ref().unwrap().net.local_handle(addr))
