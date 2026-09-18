@@ -9,7 +9,6 @@ use std::{
         mpsc,
     },
     task::{Context, Poll},
-    time::Instant,
 };
 
 use async_task::{Runnable, Task};
@@ -108,10 +107,6 @@ impl Executor {
 
     pub fn time_handle(&self) -> &TimeHandle {
         self.time.handle()
-    }
-
-    pub fn now(&self) -> Instant {
-        self.time.now()
     }
 
     pub fn block_on<F: Future>(&self, future: F) -> F::Output {

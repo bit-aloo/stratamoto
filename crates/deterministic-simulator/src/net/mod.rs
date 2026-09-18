@@ -1,7 +1,5 @@
 use std::{
-    io,
-    net::SocketAddr,
-    sync::{Arc, Mutex},
+    io, net::SocketAddr, sync::{Arc, Mutex},
 };
 
 use bytes::Bytes;
@@ -9,9 +7,7 @@ use bytes::Bytes;
 use log::trace;
 
 use crate::{
-    net::network::{Config, Message, Network},
-    rand::RandomHandle,
-    time::TimeHandle,
+    net::network::{Message, Network, Stat}, rand::RandomHandle, time::TimeHandle,
 };
 
 mod network;
@@ -29,9 +25,8 @@ pub struct NetworkLocalHandle {
 
 impl NetworkRuntime {
     pub fn new(rand: RandomHandle, time: TimeHandle) -> Self {
-        let config = Config::default();
         let handle = NetworkHandle {
-            network: Arc::new(Mutex::new(Network::new(rand, time, config))),
+            network: Arc::new(Mutex::new(Network::new(rand, time))),
         };
         NetworkRuntime { handle }
     }
@@ -54,6 +49,25 @@ impl NetworkHandle {
             addr,
             receiver,
         }
+    }
+
+    pub fn stat(&self) -> Stat {
+        self.network.lock().unwrap().stat().clone()
+    }
+
+    pub fn set_packet_loss_rate(&self, rate: f64) {
+        let mut network = self.network.lock().unwrap();
+        network.update_config(|cfg| cfg.packet_loss_rate = rate);
+    }
+
+    pub fn connect(&self, addr: SocketAddr) {
+        let mut network = self.network.lock().unwrap();
+        network.unclog(addr);
+    }
+
+    pub fn disconnect(&self, addr: SocketAddr) {
+        let mut network = self.network.lock().unwrap();
+        network.clog(&addr);
     }
 }
 

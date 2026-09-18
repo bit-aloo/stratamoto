@@ -10,7 +10,7 @@ async-task.workspace = true
 bytes.workspace = true
 futures.workspace = true
 log.workspace = true
-rand.workspace = true
+rand = { version = "0.8", features = ["small_rng"] }
 
 [dev-dependencies]
 env_logger.workspace = true

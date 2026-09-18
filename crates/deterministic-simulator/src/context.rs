@@ -37,6 +37,10 @@ pub(crate) fn enter(new: Handle) -> EnterGuard {
     })
 }
 
+pub(crate) fn rand_handle() -> crate::rand::RandomHandle {
+    CONTEXT.with(|ctx| ctx.borrow().as_ref().unwrap().rand.clone())
+}
+
 pub(crate) struct EnterGuard(Option<Handle>);
 
 impl Drop for EnterGuard {
