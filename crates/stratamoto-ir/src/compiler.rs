@@ -5,7 +5,7 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
-use stratum_core::{
+use stratum_apps::stratum_core::{
     binary_sv2::{GetSize, Serialize as Sv2Serialize, Str0255, to_writer},
     common_messages_sv2::{MESSAGE_TYPE_SETUP_CONNECTION, SetupConnection},
 };

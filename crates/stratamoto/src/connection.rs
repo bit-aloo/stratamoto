@@ -1,7 +1,7 @@
 use std::{net::SocketAddr, time::Duration};
 
 use stratamoto_dst::net::NetworkLocalHandle;
-use stratum_core::{
+use stratum_apps::stratum_core::{
     framing_sv2::{
         framing::{EncodableFrame, MessageFrame, SerializedFrame},
         header::Header,

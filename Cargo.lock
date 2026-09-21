@@ -4000,7 +4000,7 @@ dependencies = [
  "serde",
  "stratamoto-dst",
  "stratamoto-ir",
- "stratum-core",
+ "stratum-apps",
  "tracing",
  "tracing-subscriber",
 ]
@@ -4048,7 +4048,7 @@ dependencies = [
  "postcard",
  "rand 0.10.1",
  "serde",
- "stratum-core",
+ "stratum-apps",
 ]
 
 [[package]]

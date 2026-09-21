@@ -4,7 +4,7 @@ use std::{
     time::Duration,
 };
 
-use stratum_core::{
+use stratum_apps::stratum_core::{
     codec_sv2::{
         Decoded, Decrypted, ExpectsHandshakeMessage, Handshake, HandshakeMessage, InitiatorSent,
         NoiseDecoder, NoiseEncoder, TransportDecryptState, TransportEncryptState,
@@ -102,7 +102,7 @@ impl NoiseTransport {
         socket: TcpStream,
         encoder: NoiseEncoder,
         decoder: NoiseDecoder,
-        transport: stratum_core::codec_sv2::Transport,
+        transport: stratum_apps::stratum_core::codec_sv2::Transport,
     ) -> Self {
         let (encrypt, decrypt) = transport.split();
         Self {

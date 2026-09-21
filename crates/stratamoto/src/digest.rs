@@ -301,7 +301,7 @@ fn summarize(
 
 /// The classes of the frames a probe collected, matched back to the events by message type.
 fn unsolicited_classes(execution: &Execution) -> BTreeSet<EventClass> {
-    use stratum_core::common_messages_sv2 as common;
+    use stratum_apps::stratum_core::common_messages_sv2 as common;
     let mut classes = BTreeSet::new();
     for (connection, message_type) in &execution.unsolicited {
         let Some(state) = execution.connections.get(connection) else {

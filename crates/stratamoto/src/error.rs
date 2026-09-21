@@ -4,10 +4,10 @@ use std::fmt;
 pub enum Error {
     Io(std::io::Error),
     Framing(&'static str),
-    Framing2(stratum_core::framing_sv2::Error),
-    Codec(stratum_core::codec_sv2::Error),
-    Parser(stratum_core::parsers_sv2::ParserError),
-    Binary(stratum_core::binary_sv2::Error),
+    Framing2(stratum_apps::stratum_core::framing_sv2::Error),
+    Codec(stratum_apps::stratum_core::codec_sv2::Error),
+    Parser(stratum_apps::stratum_core::parsers_sv2::ParserError),
+    Binary(stratum_apps::stratum_core::binary_sv2::Error),
     UnexpectedMessage(u8),
     Input(String),
     Noise(String),
@@ -42,26 +42,26 @@ impl From<std::io::Error> for Error {
     }
 }
 
-impl From<stratum_core::framing_sv2::Error> for Error {
-    fn from(e: stratum_core::framing_sv2::Error) -> Self {
+impl From<stratum_apps::stratum_core::framing_sv2::Error> for Error {
+    fn from(e: stratum_apps::stratum_core::framing_sv2::Error) -> Self {
         Error::Framing2(e)
     }
 }
 
-impl From<stratum_core::codec_sv2::Error> for Error {
-    fn from(e: stratum_core::codec_sv2::Error) -> Self {
+impl From<stratum_apps::stratum_core::codec_sv2::Error> for Error {
+    fn from(e: stratum_apps::stratum_core::codec_sv2::Error) -> Self {
         Error::Codec(e)
     }
 }
 
-impl From<stratum_core::parsers_sv2::ParserError> for Error {
-    fn from(e: stratum_core::parsers_sv2::ParserError) -> Self {
+impl From<stratum_apps::stratum_core::parsers_sv2::ParserError> for Error {
+    fn from(e: stratum_apps::stratum_core::parsers_sv2::ParserError) -> Self {
         Error::Parser(e)
     }
 }
 
-impl From<stratum_core::binary_sv2::Error> for Error {
-    fn from(e: stratum_core::binary_sv2::Error) -> Self {
+impl From<stratum_apps::stratum_core::binary_sv2::Error> for Error {
+    fn from(e: stratum_apps::stratum_core::binary_sv2::Error) -> Self {
         Error::Binary(e)
     }
 }

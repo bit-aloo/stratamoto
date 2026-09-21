@@ -7,7 +7,7 @@
 //! says so, whatever else arrived in between.
 
 use serde::{Deserialize, Serialize};
-use stratum_core::parsers_sv2::{AnyMessage, CommonMessages, IsSv2Message};
+use stratum_apps::stratum_core::parsers_sv2::{AnyMessage, CommonMessages, IsSv2Message};
 
 use crate::connection::Frame;
 

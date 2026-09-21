@@ -1,6 +1,6 @@
 pub mod upstream;
 
-use stratum_core::common_messages_sv2::Protocol;
+use stratum_apps::stratum_core::common_messages_sv2::Protocol;
 
 use crate::{connection::Connection, error::Result};
 

@@ -1,4 +1,4 @@
-use stratum_core::{
+use stratum_apps::stratum_core::{
     common_messages_sv2::{
         ERROR_CODE_SETUP_CONNECTION_PROTOCOL_VERSION_MISMATCH,
         ERROR_CODE_SETUP_CONNECTION_UNSUPPORTED_FEATURE_FLAGS,
