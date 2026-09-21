@@ -17,6 +17,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 postcard = { version = "1.1.3", features = ["alloc"], default-features = false }
 rand = "0.10.1"
 serde = { version = "1.0.228", features = ["derive"] }
+cc = "1"
 # The protocol crates, re-exported by stratum-apps at the sv2-apps revision the pool binary
 # under test is built from, so that the harness speaks the same wire format it does.
 stratum-apps = { git = "https://github.com/stratum-mining/sv2-apps.git", rev = "ab8f30f1784ea20c2de1b2726c47e7eea10f4556", default-features = false, features = ["core"] }
@@ -27,6 +28,7 @@ env_logger = "0.11.10"
 
 stratamoto-dst = { path = "crates/stratamoto-dst" }
 stratamoto-macros = { path = "crates/stratamoto-macros" }
+stratamoto-nyx-sys = { path = "crates/stratamoto-nyx-sys" }
 stratamoto = { path = "crates/stratamoto" }
 stratamoto-ir = { path = "crates/stratamoto-ir" }
 stratamoto-scenarios = { path = "crates/stratamoto-scenarios" }

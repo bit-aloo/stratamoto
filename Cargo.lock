@@ -4047,6 +4047,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "stratamoto-nyx-sys"
+version = "0.1.0"
+dependencies = [
+ "cc",
+]
+
+[[package]]
 name = "stratamoto-scenarios"
 version = "0.1.0"
 dependencies = [

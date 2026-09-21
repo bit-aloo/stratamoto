@@ -1,0 +1,12 @@
+[package]
+name = "stratamoto-nyx-sys"
+version.workspace = true
+edition.workspace = true
+readme = "README.md"
+links = "nyx_agent"
+description = "Bindings to the Nyx agent a scenario runs inside the snapshotting VM with"
+
+[dependencies]
+
+[build-dependencies]
+cc.workspace = true
