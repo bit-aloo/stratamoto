@@ -1,14 +1,17 @@
 use stratamoto::{
     deployment::SimulatedDeployment,
+    digest::{ExecutionDigest, Verdict},
     error::{Error, Result},
-    oracle::{CrashOracle, Oracle, OracleResult, SetupConnectionOracle},
+    oracle::{CrashOracle, HarnessIntegrityOracle, Oracle, OracleResult, SetupConnectionOracle},
     roles::RoleConfig,
-    runner::{self, Execution, SetupResponse},
+    runner::{self, Execution},
     scenario::{Scenario, ScenarioInput, ScenarioResult},
     stratum_core::common_messages_sv2::Protocol,
+    transport::Deployment,
 };
 use stratamoto_ir::{
     Program,
+    artifact::read_program,
     compiler::{CompiledProgram, Compiler},
 };
 
@@ -29,6 +32,40 @@ pub struct TestCase {
     pub program: CompiledProgram,
 }
 
+/// What running a test case produced: the record, the verdict, and the normalized digest a
+/// campaign keys its corpus by.
+pub struct Run {
+    pub execution: Execution,
+    pub result: ScenarioResult,
+    pub digest: ExecutionDigest,
+}
+
+impl Run {
+    /// Judge an execution with the scenario's oracles and digest it.
+    pub fn of<D: Deployment>(
+        deployment: &D,
+        program: &CompiledProgram,
+        execution: Execution,
+        judge: impl FnOnce(&D, &CompiledProgram, &Execution) -> ScenarioResult,
+    ) -> Self {
+        let result = judge(deployment, program, &execution);
+        let verdict = match &result {
+            ScenarioResult::Ok => Verdict::Ok,
+            ScenarioResult::Skip => Verdict::Skip,
+            ScenarioResult::Fail(reason) => {
+                Verdict::Fail(reason.split(':').next().unwrap_or_default().to_string())
+            }
+            ScenarioResult::Infrastructure(_) => Verdict::Infrastructure,
+        };
+        let digest = ExecutionDigest::of(program, &execution, deployment.is_alive(), verdict);
+        Self {
+            execution,
+            result,
+            digest,
+        }
+    }
+}
+
 impl TestCase {
     pub fn from_program(program: &Program) -> Result<Self> {
         if !program.is_statically_valid() {
@@ -42,48 +79,54 @@ impl TestCase {
 }
 
 impl ScenarioInput for TestCase {
+    /// A saved artifact or a bare program, as the CLI writes one.
     fn decode(bytes: &[u8]) -> Result<Self> {
-        let program: Program =
-            postcard::from_bytes(bytes).map_err(|e| Error::Input(e.to_string()))?;
+        let program = read_program(bytes).map_err(|e| Error::Input(e.to_string()))?;
         Self::from_program(&program)
     }
 }
 
-pub struct SetupConnectionScenario {
-    seed: u64,
-}
+/// The setup connection scenario against the mock roles.
+///
+/// Every test case gets a fresh deployment, built from the seed its own program carries, so a
+/// case cannot be affected by the ones before it and needs nothing but its bytes to replay.
+pub struct SetupConnectionScenario;
 
 impl SetupConnectionScenario {
     /// Run a test case and hand back what the deployment did, for a caller that wants more
     /// than a pass or fail.
-    pub fn execute(&self, testcase: &TestCase) -> (Execution, ScenarioResult) {
-        let deployment = SimulatedDeployment::new(self.seed, roles());
+    pub fn execute(&self, testcase: &TestCase) -> Run {
+        let deployment = SimulatedDeployment::new(testcase.program.context.seed, roles());
         let execution = runner::run(&deployment, &testcase.program);
-
-        let result = evaluate(&deployment, &testcase.program, &execution);
-        (execution, result)
+        Run::of(&deployment, &testcase.program, execution, evaluate)
     }
 }
 
 impl Scenario<TestCase> for SetupConnectionScenario {
-    fn new(seed: u64) -> Result<Self> {
-        Ok(Self { seed })
+    fn new() -> Result<Self> {
+        Ok(Self)
     }
 
     fn run(&mut self, testcase: TestCase) -> ScenarioResult {
-        self.execute(&testcase).1
+        self.execute(&testcase).result
     }
 }
 
 /// Run the scenario's oracles in order, reporting the first violation.
 ///
-/// Conformance first, then liveness: a crash is worth knowing about however the messages
-/// looked, so it is checked even when the answers were within the specification.
+/// The harness's own integrity first, since a run the harness did not complete says nothing
+/// about the deployment and is reported as such; then conformance, then liveness: a crash is
+/// worth knowing about however the messages looked, so it is checked even when the answers
+/// were within the specification.
 pub fn evaluate<D: stratamoto::transport::Deployment>(
     deployment: &D,
     program: &stratamoto_ir::compiler::CompiledProgram,
     execution: &Execution,
 ) -> ScenarioResult {
+    let integrity = HarnessIntegrityOracle;
+    if let OracleResult::Fail(e) = integrity.evaluate(deployment, program, execution) {
+        return ScenarioResult::Infrastructure(format!("{}: {e}", integrity.name()));
+    }
     let conformance = SetupConnectionOracle;
     if let OracleResult::Fail(e) = conformance.evaluate(deployment, program, execution) {
         return ScenarioResult::Fail(format!("{}: {e}", conformance.name()));
@@ -93,55 +136,4 @@ pub fn evaluate<D: stratamoto::transport::Deployment>(
         return ScenarioResult::Fail(format!("{}: {e}", crash.name()));
     }
     ScenarioResult::Ok
-}
-
-/// A coarse summary of what a run did, used to tell a new behaviour from a repeat of one
-/// already in the corpus.
-///
-/// It is the set of distinct interactions a run produced, not how many of each: a program
-/// that opens the same session twice has not reached anywhere new, while one that draws an
-/// error a role has not returned before has.
-#[must_use]
-pub fn signature(execution: &Execution) -> u64 {
-    use std::hash::{Hash, Hasher};
-
-    let mut interactions: Vec<(usize, stratamoto_ir::Protocol, bool, u8, u64)> = execution
-        .sessions
-        .values()
-        .map(|session| {
-            let role = execution
-                .connection_roles
-                .get(&session.connection)
-                .copied()
-                .unwrap_or(usize::MAX);
-            let (kind, detail) = match &session.response {
-                SetupResponse::Success { used_version, .. } => (0u8, u64::from(*used_version)),
-                SetupResponse::Error { error_code, .. } => (1, hash(error_code)),
-                SetupResponse::Unexpected { message_type } => (2, u64::from(*message_type)),
-                SetupResponse::Silence => (3, 0),
-            };
-            (
-                role,
-                session.protocol,
-                session.first_on_connection,
-                kind,
-                detail,
-            )
-        })
-        .collect();
-    interactions.sort();
-    interactions.dedup();
-
-    let mut hasher = std::hash::DefaultHasher::new();
-    interactions.hash(&mut hasher);
-    // Whether anything arrived unprompted, not how much of it.
-    (!execution.unsolicited.is_empty()).hash(&mut hasher);
-    hasher.finish()
-}
-
-fn hash<T: std::hash::Hash>(value: T) -> u64 {
-    use std::hash::Hasher;
-    let mut hasher = std::hash::DefaultHasher::new();
-    value.hash(&mut hasher);
-    hasher.finish()
 }

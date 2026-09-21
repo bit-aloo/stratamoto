@@ -13,9 +13,11 @@ ignored = ["env_logger", "log"]
 stratamoto.workspace = true
 stratamoto-ir.workspace = true
 stratamoto-targets.workspace = true
-postcard.workspace = true
 env_logger.workspace = true
 log.workspace = true
+
+[dev-dependencies]
+postcard.workspace = true
 
 [lib]
 path = "src/lib.rs"
