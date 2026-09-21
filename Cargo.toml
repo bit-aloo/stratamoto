@@ -31,6 +31,5 @@ stratamoto-dst = { path = "crates/stratamoto-dst" }
 stratamoto-macros = { path = "crates/stratamoto-macros" }
 stratamoto = { path = "crates/stratamoto" }
 stratamoto-ir = { path = "crates/stratamoto-ir" }
-stratamoto-fuzz = { path = "crates/stratamoto-fuzz" }
 stratamoto-scenarios = { path = "crates/stratamoto-scenarios" }
 stratamoto-targets = { path = "crates/stratamoto-targets" }

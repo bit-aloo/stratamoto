@@ -15,18 +15,14 @@ is asked to set a connection up.
 ```rust
 use stratamoto_targets::pool::PoolDeployment;
 
-let mut deployment = PoolDeployment::start()?;   // node, sv2-tp, then the pool
+let deployment = PoolDeployment::start()?;          // node, sv2-tp, then the pool
 deployment.template_provider().generate_blocks(1);   // move the chain
-deployment.restart_pool()?;                          // a pool that has served nothing
-deployment.restart_all()?;                           // and a node and sv2-tp likewise
 ```
 
 Starting one waits until the pool has taken its first template and is accepting connections:
-about three seconds for the node, `sv2-tp` and the pool together, and about one second for the
-pool alone. The pool remembers what earlier connections did, so a caller that wants every
-program to start alike replaces the pool between programs; the node and `sv2-tp` keep running
-through that, since it is the pool that keeps channel state. A pool that stopped serving is
-replaced the same way, with a bound on how long it is given to shut down.
+about three seconds for the node, `sv2-tp` and the pool together. The pool remembers what
+earlier connections did, so a run against a reused pool can see what the runs before it left
+behind; a process that wants every program to start alike runs one program per pool.
 
 ## Prerequisites
 
@@ -52,7 +48,6 @@ cargo test -p stratamoto-targets -- --ignored # the known upstream livelock
 | test | what it establishes |
 | --- | --- |
 | `pool.rs` | the pool answers `SetupConnection` within the specification |
-| `isolation.rs` | a program's result is the same alone, after another program, and after one that wedged the pool; and what a restart costs, printed with `--nocapture` |
 
 The ignored test in `pool.rs` asserts an unfixed sv2-apps livelock is present, so it fails once
 that is fixed. See the [root README](../../README.md#a-known-upstream-finding).

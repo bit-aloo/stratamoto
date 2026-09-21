@@ -37,8 +37,8 @@ pub struct Artifact {
     pub verdict: String,
     /// Whether the program drew the verdict again when run once more from a clean start.
     pub confirmed: bool,
-    /// The record of the run that drew the verdict and its digest, as the harness that wrote
-    /// the artifact encodes them: the postcard encoding of its execution and digest types,
+    /// The record of the run that drew the verdict, as the harness that wrote the artifact
+    /// encodes it: the postcard encoding of its execution type,
     /// which this crate does not know. The program is what replays; this is what was seen.
     pub trace: Option<Vec<u8>>,
 }

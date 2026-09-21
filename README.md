@@ -28,7 +28,6 @@ the same conformance checks apply to both.
 | [`stratamoto`](crates/stratamoto) | the harness: transports, deployments, the runner and the oracles |
 | [`stratamoto-targets`](crates/stratamoto-targets) | the real roles: sv2-apps' pool, against Bitcoin Core |
 | [`stratamoto-scenarios`](crates/stratamoto-scenarios) | one binary per scenario |
-| [`stratamoto-fuzz`](crates/stratamoto-fuzz) | the campaign: corpus, mutation loop, minimization |
 | [`stratamoto-cli`](crates/stratamoto-cli) | generating, printing and compiling programs by hand |
 
 A run goes: a **generator** builds a program through the **builder**, which rejects anything
@@ -57,26 +56,6 @@ target/debug/stratamoto generate 7 3 | target/debug/setup_connection
 A scenario binary takes a serialized program on stdin and exits non-zero when an oracle finds a
 violation. The program carries the seed its simulated deployment is built from, so the same
 bytes replay the same run.
-
-### Fuzz
-
-```sh
-target/debug/stratamoto-fuzz 2000 1                      # simulated roles
-STRATAMOTO_TARGET=pool target/debug/stratamoto-fuzz 60 1 ./failures   # sv2-apps' pool
-```
-
-Arguments are `[iterations] [seed] [failure directory]`. Failures are reduced before they are
-reported and, when a directory is given, written there as artifacts: the program, the scenario
-and verdict, the campaign seed and the corpus entry it was mutated from, and the revisions of
-the roles and libraries it was found against. A scenario binary replays an artifact as it is,
-and `stratamoto print` shows one.
-
-Against the pool, the pool is replaced before every run, so no run sees what earlier ones left
-behind and a run that stops the pool costs one restart rather than the campaign.
-
-The roles are compiled into the fuzzer, so the compiler's own coverage instrumentation reaches
-them: built with `RUSTFLAGS="-C instrument-coverage"`, the fuzzer also keeps any program that
-reached a code region no earlier one had. See [the fuzzer's README](crates/stratamoto-fuzz/README.md#coverage-from-inside-the-target).
 
 ## Running against real roles
 
@@ -116,9 +95,5 @@ the test fails, and that is the signal to update the record.
 | variable | what it does |
 | --- | --- |
 | `STRATAMOTO_INPUT` | read a scenario's program or artifact from a file instead of stdin |
-| `STRATAMOTO_TARGET` | `simulated` (default) or `pool` |
-| `STRATAMOTO_RESET` | what the pool target replaces before each run: `pool` (default), `all` for the node and `sv2-tp` too, or `none` |
-| `STRATAMOTO_CORPUS` | a directory the fuzzer keeps its corpus in, and starts from next time |
 | `STRATAMOTO_TEMPLATE_PROVIDER_CACHE` | where Bitcoin Core and `sv2-tp` already live |
 | `RUST_LOG` | filters logging from the harness and the real roles alike, through `tracing` |
-| `LLVM_PROFILE_FILE` | where an instrumented build writes its profile at exit; `/dev/null` when only the fuzzer's observer needs the counters |

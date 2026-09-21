@@ -1,6 +1,5 @@
 use stratamoto::{
     deployment::SimulatedDeployment,
-    digest::{ExecutionDigest, Verdict},
     error::{Error, Result},
     oracle::{CrashOracle, HarnessIntegrityOracle, Oracle, OracleResult, SetupConnectionOracle},
     roles::RoleConfig,
@@ -32,16 +31,14 @@ pub struct TestCase {
     pub program: CompiledProgram,
 }
 
-/// What running a test case produced: the record, the verdict, and the normalized digest a
-/// campaign keys its corpus by.
+/// What running a test case produced: the record and the verdict.
 pub struct Run {
     pub execution: Execution,
     pub result: ScenarioResult,
-    pub digest: ExecutionDigest,
 }
 
 impl Run {
-    /// Judge an execution with the scenario's oracles and digest it.
+    /// Judge an execution with the scenario's oracles.
     pub fn of<D: Deployment>(
         deployment: &D,
         program: &CompiledProgram,
@@ -49,20 +46,7 @@ impl Run {
         judge: impl FnOnce(&D, &CompiledProgram, &Execution) -> ScenarioResult,
     ) -> Self {
         let result = judge(deployment, program, &execution);
-        let verdict = match &result {
-            ScenarioResult::Ok => Verdict::Ok,
-            ScenarioResult::Skip => Verdict::Skip,
-            ScenarioResult::Fail(reason) => {
-                Verdict::Fail(reason.split(':').next().unwrap_or_default().to_string())
-            }
-            ScenarioResult::Infrastructure(_) => Verdict::Infrastructure,
-        };
-        let digest = ExecutionDigest::of(program, &execution, deployment.is_alive(), verdict);
-        Self {
-            execution,
-            result,
-            digest,
-        }
+        Self { execution, result }
     }
 }
 

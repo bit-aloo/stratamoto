@@ -8,7 +8,6 @@ readme = "README.md"
 stratamoto.workspace = true
 stratamoto-ir.workspace = true
 stratamoto-targets.workspace = true
-tracing.workspace = true
 
 [dev-dependencies]
 postcard.workspace = true

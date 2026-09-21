@@ -4029,19 +4029,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "stratamoto-fuzz"
-version = "0.1.0"
-dependencies = [
- "postcard",
- "rand 0.10.1",
- "stratamoto",
- "stratamoto-ir",
- "stratamoto-scenarios",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
 name = "stratamoto-ir"
 version = "0.1.0"
 dependencies = [
@@ -4068,7 +4055,6 @@ dependencies = [
  "stratamoto",
  "stratamoto-ir",
  "stratamoto-targets",
- "tracing",
 ]
 
 [[package]]
