@@ -155,7 +155,21 @@ pub fn run<D: Deployment>(deployment: &D, program: &CompiledProgram) -> Executio
             next = end + 1;
             continue;
         }
+        let started = Instant::now();
         let outcome = runner.perform(&actions[next]);
+        // The trace of a replay: what was done, for which instruction, what came of it and
+        // how long it took. At debug, so that a campaign does not pay for it.
+        tracing::debug!(
+            "a{next} [i{}] {} -> {outcome:?} in {:.1?}",
+            program
+                .metadata
+                .action_instructions
+                .get(next)
+                .copied()
+                .unwrap_or_default(),
+            describe(&actions[next]),
+            started.elapsed()
+        );
         runner.execution.outcomes.push(outcome);
         next += 1;
     }
@@ -163,6 +177,24 @@ pub fn run<D: Deployment>(deployment: &D, program: &CompiledProgram) -> Executio
     debug_assert!(runner.execution.is_total(program));
     runner.execution.connections = runner.states;
     runner.execution
+}
+
+/// An action as the trace shows it: a frame by its header and length rather than its bytes.
+fn describe(action: &Action) -> String {
+    match action {
+        Action::Send {
+            connection,
+            extension_type,
+            message_type,
+            payload,
+            ..
+        } => format!(
+            "Send {{ connection: {connection}, message_type: {message_type:#04x}, \
+             extension_type: {extension_type:#06x}, payload: {} bytes }}",
+            payload.len()
+        ),
+        other => format!("{other:?}"),
+    }
 }
 
 struct Runner<'d, D: Deployment> {
