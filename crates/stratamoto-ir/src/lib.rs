@@ -1,3 +1,4 @@
+pub mod artifact;
 pub mod builder;
 pub mod compiler;
 pub mod errors;
