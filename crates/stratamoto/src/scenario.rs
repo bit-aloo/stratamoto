@@ -6,15 +6,22 @@ pub enum ScenarioResult {
     Skip,
     /// The deployment under test violated the protocol.
     Fail(String),
+    /// The harness could not give the input a run: the deployment could not be brought up or
+    /// reset. It says nothing about the input or the deployment's conformance, and nothing can
+    /// run until it is fixed, so it is kept apart from a finding.
+    Infrastructure(String),
 }
 
 pub trait ScenarioInput: Sized {
     fn decode(bytes: &[u8]) -> Result<Self>;
 }
 
-/// A reproducible test of an Sv2 deployment, run on a seeded simulator.
+/// A reproducible test of an Sv2 deployment.
+///
+/// Whatever a run depends on travels with the input: a program carries the seed its simulated
+/// deployment is built from, so there is nothing to read from the environment.
 pub trait Scenario<I: ScenarioInput>: Sized {
-    fn new(seed: u64) -> Result<Self>;
+    fn new() -> Result<Self>;
     fn run(&mut self, input: I) -> ScenarioResult;
 }
 
@@ -26,11 +33,6 @@ macro_rules! stratamoto_main {
 
             env_logger::init();
 
-            let seed = std::env::var("STRATAMOTO_SEED")
-                .ok()
-                .and_then(|s| s.parse().ok())
-                .unwrap_or(0);
-
             let bytes = match std::env::var("STRATAMOTO_INPUT") {
                 Ok(path) => std::fs::read(path).unwrap_or_default(),
                 Err(_) => {
@@ -41,16 +43,24 @@ macro_rules! stratamoto_main {
                 }
             };
 
-            let Ok(input) = <$input as ScenarioInput>::decode(&bytes) else {
-                log::warn!("failed to decode input");
-                return std::process::ExitCode::SUCCESS;
+            // Input that is not a test case is skipped rather than failed, as a fuzzer's
+            // harness would; the reason is logged so that an artifact this build cannot read
+            // says why, rather than passing in silence.
+            let input = match <$input as ScenarioInput>::decode(&bytes) {
+                Ok(input) => input,
+                Err(e) => {
+                    log::warn!("skipping input that does not decode: {e}");
+                    return std::process::ExitCode::SUCCESS;
+                }
             };
 
-            let mut scenario = match <$scenario as Scenario<$input>>::new(seed) {
+            // Exit codes: 0 for a pass or a skip, 1 for a finding, 2 when the harness could
+            // not run the input at all, so that a script never reads an outage as a finding.
+            let mut scenario = match <$scenario as Scenario<$input>>::new() {
                 Ok(scenario) => scenario,
                 Err(e) => {
-                    log::error!("failed to initialize scenario: {e}");
-                    return std::process::ExitCode::FAILURE;
+                    log::error!("infrastructure failure: could not initialize the scenario: {e}");
+                    return std::process::ExitCode::from(2);
                 }
             };
 
@@ -63,6 +73,10 @@ macro_rules! stratamoto_main {
                 ScenarioResult::Fail(e) => {
                     log::error!("test case failed: {e}");
                     std::process::ExitCode::FAILURE
+                }
+                ScenarioResult::Infrastructure(e) => {
+                    log::error!("infrastructure failure: {e}");
+                    std::process::ExitCode::from(2)
                 }
             }
         }

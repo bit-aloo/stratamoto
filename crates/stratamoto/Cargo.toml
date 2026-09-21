@@ -5,6 +5,7 @@ edition.workspace = true
 readme = "README.md"
 
 [dependencies]
+serde.workspace = true
 stratamoto-dst.workspace = true
 stratamoto-ir.workspace = true
 stratum-core.workspace = true

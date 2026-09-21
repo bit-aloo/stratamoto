@@ -78,7 +78,10 @@ impl DeploymentTrait for SimulatedDeployment {
     }
 
     fn advance_time(&self, duration: Duration) {
-        self.runtime.block_on(stratamoto_dst::time::sleep(duration));
+        // The sleep has to be created inside the executor, where the clock it registers with
+        // is in scope.
+        self.runtime
+            .block_on(async move { stratamoto_dst::time::sleep(duration).await });
     }
 }
 

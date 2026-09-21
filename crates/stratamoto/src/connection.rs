@@ -19,7 +19,7 @@ const CHANNEL_MSG_MASK: u16 = 0b1000_0000_0000_0000;
 pub struct Frame(SerializedFrame<Vec<u8>>);
 
 impl Frame {
-    pub(crate) fn from_bytes(bytes: Vec<u8>) -> Result<Self> {
+    pub fn from_bytes(bytes: Vec<u8>) -> Result<Self> {
         SerializedFrame::from_bytes(bytes)
             .map(Frame)
             .map_err(|_| Error::Framing("bytes do not hold exactly one frame"))
@@ -39,7 +39,7 @@ impl Frame {
 ///
 /// The header is written here rather than delegated, so that a program can put anything it
 /// likes on the wire.
-pub(crate) fn assemble(
+pub fn assemble(
     extension_type: u16,
     message_type: u8,
     channel_msg: bool,

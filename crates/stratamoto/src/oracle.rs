@@ -1,13 +1,11 @@
-use std::collections::HashMap;
-
 use stratamoto_ir::{
     Protocol,
-    compiler::{Action, ChannelSlot, CompiledProgram, ConnectionId, SetupConnectionSpec},
+    compiler::{Action, CompiledProgram, SetupConnectionSpec},
 };
 
 use crate::{
     roles::{RoleConfig, protocol_of},
-    runner::{ChannelOutcome, Execution, SetupResponse},
+    runner::{ActionId, ActionOutcome, Execution, Response, SetupResponse},
     transport::Deployment,
 };
 
@@ -22,6 +20,10 @@ pub enum OracleResult {
 }
 
 /// Checks an execution against a property the protocol requires of any implementation.
+///
+/// An oracle walks the compiled actions and looks each one up in the outcomes, never the
+/// other way round: what the program asked for is the expectation, and an action the run has
+/// no answer for is a failure of the harness, not a pass.
 pub trait Oracle {
     fn evaluate<D: Deployment>(
         &self,
@@ -31,6 +33,43 @@ pub trait Oracle {
     ) -> OracleResult;
 
     fn name(&self) -> &'static str;
+}
+
+/// The run recorded what it was supposed to, and nothing in it failed on the harness's side.
+///
+/// A failure here is about the harness, so a scenario reports it as an infrastructure verdict
+/// and never as a finding about the deployment. It runs before every other oracle, since the
+/// others assume what it checks.
+pub struct HarnessIntegrityOracle;
+
+impl Oracle for HarnessIntegrityOracle {
+    fn evaluate<D: Deployment>(
+        &self,
+        _deployment: &D,
+        program: &CompiledProgram,
+        execution: &Execution,
+    ) -> OracleResult {
+        if !execution.is_total(program) {
+            return OracleResult::Fail(format!(
+                "the program has {} actions and the execution {} outcomes",
+                program.actions.len(),
+                execution.outcomes.len()
+            ));
+        }
+        for (id, outcome) in execution.outcomes.iter().enumerate() {
+            if let ActionOutcome::HarnessError(e) = outcome {
+                return OracleResult::Fail(format!(
+                    "the harness could not carry out action {id} ({}): {e}",
+                    describe(program, id)
+                ));
+            }
+        }
+        OracleResult::Pass
+    }
+
+    fn name(&self) -> &'static str {
+        "HarnessIntegrityOracle"
+    }
 }
 
 /// Every `SetupConnection` is answered, and answered in a way the specification allows.
@@ -48,26 +87,42 @@ impl Oracle for SetupConnectionOracle {
         program: &CompiledProgram,
         execution: &Execution,
     ) -> OracleResult {
-        for (id, session) in &execution.sessions {
-            let Some(spec) = program.metadata.session_setups.get(id) else {
-                return OracleResult::Fail(format!("session {id} has no recorded SetupConnection"));
+        for (id, action) in program.actions.iter().enumerate() {
+            let Action::AwaitSetupResponse {
+                connection,
+                session,
+                first_on_connection,
+                ..
+            } = action
+            else {
+                continue;
             };
-            let Some(role) = execution.connection_roles.get(&session.connection) else {
+            let Some(outcome) = execution.outcome(id) else {
                 return OracleResult::Fail(format!(
-                    "session {id} is on connection {} which was never opened",
-                    session.connection
+                    "action {id} ({}) has no outcome",
+                    describe(program, id)
                 ));
             };
+            let Some(spec) = program.metadata.session_setups.get(session) else {
+                return OracleResult::Fail(format!(
+                    "session {session} has no recorded SetupConnection"
+                ));
+            };
+            let Some(role) = execution.connection_roles.get(connection) else {
+                // The connection was never opened, so nothing was asked of any role. Whether
+                // it should have opened is the crash oracle's question.
+                continue;
+            };
             let Some(config) = deployment.role_config(*role) else {
-                return OracleResult::Fail(format!("session {id} is on unknown role {role}"));
+                return OracleResult::Fail(format!("session {session} is on unknown role {role}"));
             };
 
-            if let Err(violation) =
-                check(config, spec, session.first_on_connection, &session.response)
-            {
+            // An answer is owed only to a setup the client sent as the protocol requires: the
+            // first message on its connection, with nothing of its own choosing before it.
+            let owed = *first_on_connection && !program.metadata.violations.contains_key(&id);
+            if let Err(violation) = check(config, spec, owed, outcome) {
                 return OracleResult::Fail(format!(
-                    "role {role} answered {:?} to {spec:?}: {violation}",
-                    session.response
+                    "role {role} answered {outcome:?} to {spec:?}: {violation}"
                 ));
             }
         }
@@ -107,116 +162,53 @@ impl Oracle for CrashOracle {
     }
 }
 
-/// Every `OpenStandardMiningChannel` is answered in a way the mining protocol allows.
+/// The instruction an action came from, for a message about it.
+fn describe(program: &CompiledProgram, action: ActionId) -> String {
+    match program.metadata.action_instructions.get(action) {
+        Some(instruction) => format!("instruction {instruction}"),
+        None => "no instruction".to_string(),
+    }
+}
+
+/// Why `outcome` is not an answer to `spec` that a role configured as `config` may give.
 ///
-/// The identifiers belong to the server, so what can be checked is that it kept its own
-/// bookkeeping straight: an answer names the request it belongs to, and two channels open at
-/// once on a connection are not the same channel.
-pub struct MiningChannelOracle;
-
-impl Oracle for MiningChannelOracle {
-    fn evaluate<D: Deployment>(
-        &self,
-        _deployment: &D,
-        program: &CompiledProgram,
-        execution: &Execution,
-    ) -> OracleResult {
-        let mut assigned: HashMap<(ConnectionId, u32), ChannelSlot> = HashMap::new();
-
-        for (slot, outcome) in &execution.channels {
-            let Some(open) = program.metadata.channel_opens.get(slot) else {
-                return OracleResult::Fail(format!("channel {slot} has no recorded open"));
-            };
-
-            match outcome {
-                ChannelOutcome::Silence => {
-                    // A server may drop a client that sent it something it does not accept, so
-                    // once the program has put a frame of its own choosing on the connection,
-                    // silence afterwards is the client's doing and not a violation.
-                    if !open_context(program, *slot).1 {
-                        return OracleResult::Fail(format!(
-                            "the open of channel {slot} was never answered"
-                        ));
-                    }
-                }
-                ChannelOutcome::Unexpected { message_type } => {
-                    return OracleResult::Fail(format!(
-                        "the open of channel {slot} was answered with message type \
-                         0x{message_type:02x}, which opens nothing"
-                    ));
-                }
-                ChannelOutcome::Error { request_id, .. } => {
-                    if *request_id != open.request_id {
-                        return OracleResult::Fail(format!(
-                            "the error for channel {slot} names request {request_id}, not the \
-                             request {} it answers",
-                            open.request_id
-                        ));
-                    }
-                }
-                ChannelOutcome::Success {
-                    request_id,
-                    channel_id,
-                    ..
-                } => {
-                    if *request_id != open.request_id {
-                        return OracleResult::Fail(format!(
-                            "the success for channel {slot} names request {request_id}, not the \
-                             request {} it answers",
-                            open.request_id
-                        ));
-                    }
-
-                    let connection = open_context(program, *slot).0;
-                    if let Some(previous) = assigned.insert((connection, *channel_id), *slot) {
-                        return OracleResult::Fail(format!(
-                            "channel id {channel_id} was given to both channel {previous} and \
-                             channel {slot} on the same connection"
-                        ));
-                    }
-                }
-            }
-        }
-
-        OracleResult::Pass
-    }
-
-    fn name(&self) -> &'static str {
-        "MiningChannelOracle"
-    }
-}
-
-/// The connection a channel was opened on, and whether the program had already put a frame of
-/// its own choosing on that connection, taken from the action that opened it.
-fn open_context(program: &CompiledProgram, slot: ChannelSlot) -> (ConnectionId, bool) {
-    program
-        .actions
-        .iter()
-        .find_map(|action| match action {
-            Action::OpenStandardMiningChannel {
-                connection,
-                channel,
-                after_raw_frame,
-                ..
-            } if *channel == slot => Some((*connection, *after_raw_frame)),
-            _ => None,
-        })
-        .unwrap_or((ConnectionId::MAX, false))
-}
-
-/// Why `response` is not an answer to `spec` that a role configured as `config` may give.
+/// `owed` says whether the server owed an answer at all: only to a `SetupConnection` that was
+/// the first message on its connection, since one sent later is already the client's
+/// violation. The server may ignore it or close the connection, and nothing it does in reply
+/// is constrained.
 pub fn check(
     config: &RoleConfig,
     spec: &SetupConnectionSpec,
-    first_on_connection: bool,
-    response: &SetupResponse,
+    owed: bool,
+    outcome: &ActionOutcome,
 ) -> Result<(), String> {
-    // SetupConnection MUST be the first message on a new connection, and it is that message the
-    // server MUST answer. One sent later is already the client's violation: the server may
-    // ignore it or close the connection, and nothing it does in reply is constrained.
-    if !first_on_connection {
+    if !owed {
         return Ok(());
     }
+
+    let response = match outcome {
+        ActionOutcome::Completed(Response::Setup(response)) => response,
+        ActionOutcome::TimedOut => {
+            return Err(
+                "the server MUST respond with SetupConnection.Success or SetupConnection.Error"
+                    .to_string(),
+            );
+        }
+        ActionOutcome::TransportClosed => {
+            return Err("the server closed the connection instead of answering".to_string());
+        }
+        ActionOutcome::TransportError(e) => {
+            return Err(format!(
+                "the transport failed before an answer arrived: {e}"
+            ));
+        }
+        // Nothing was sent, so nothing is owed; and what the harness could not do, the
+        // integrity oracle reports.
+        ActionOutcome::Skipped(_) | ActionOutcome::HarnessError(_) => return Ok(()),
+        ActionOutcome::Completed(other) => {
+            return Err(format!("the outcome is of the wrong kind: {other:?}"));
+        }
+    };
 
     let (used_version, flags) = match response {
         SetupResponse::Silence => {

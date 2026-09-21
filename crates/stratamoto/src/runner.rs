@@ -1,20 +1,19 @@
-use std::{collections::HashMap, time::Duration};
+use std::{
+    collections::HashMap,
+    io::ErrorKind,
+    time::{Duration, Instant},
+};
 
+use serde::{Deserialize, Serialize};
+pub use stratamoto_ir::compiler::ActionId;
 use stratamoto_ir::{
     Protocol,
-    compiler::{Action, ChannelSlot, CompiledProgram, ConnectionId, IdSource, SessionId},
-};
-use stratum_core::{
-    binary_sv2::{GetSize, Serialize as Sv2Serialize, to_writer},
-    mining_sv2::{
-        MESSAGE_TYPE_OPEN_STANDARD_MINING_CHANNEL, MESSAGE_TYPE_SUBMIT_SHARES_STANDARD,
-        SubmitSharesStandard,
-    },
-    parsers_sv2::{AnyMessage, CommonMessages, Mining},
+    compiler::{Action, CompiledProgram, ConnectionId, SessionId},
 };
 
 use crate::{
     error::Error,
+    events::{ConnectionState, SetupState},
     transport::{Deployment, Transport},
 };
 
@@ -27,7 +26,7 @@ pub const RESPONSE_TIMEOUT: Duration = Duration::from_secs(10);
 pub const UNOWED_RESPONSE_WAIT: Duration = Duration::from_millis(100);
 
 /// What a role answered a `SetupConnection` with.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub enum SetupResponse {
     Success {
         used_version: u16,
@@ -46,7 +45,7 @@ pub enum SetupResponse {
 }
 
 /// A session as the program set it up, paired with what the role answered.
-#[derive(Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Session {
     pub connection: ConnectionId,
     pub protocol: Protocol,
@@ -55,85 +54,204 @@ pub struct Session {
     pub response: SetupResponse,
 }
 
-/// What a role answered an `OpenStandardMiningChannel` with.
-///
-/// A successful open is answered by three messages: the success itself, the job the server
-/// built from its latest template, and the prevhash that activates it. The job identifier is
-/// taken from those, since nothing else can tell a program which job to mine.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ChannelOutcome {
-    Success {
-        /// The identifier the server echoed, which section 5.3.2 pairs with the request.
-        request_id: u32,
-        channel_id: u32,
-        group_channel_id: u32,
-        job_id: Option<u32>,
-    },
-    Error {
-        request_id: u32,
-        error_code: String,
-    },
-    Unexpected {
-        message_type: u8,
-    },
-    Silence,
+/// Why an action was not attempted.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub enum Prerequisite {
+    /// The connection the action needed was never opened.
+    ConnectionOpen(ConnectionId),
+    /// The action was inside a block that runs only once the server agreed to the session's
+    /// setup, and the server did not.
+    SetupSuccess(SessionId),
 }
 
-/// What a role answered a share with.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ShareOutcome {
-    Success {
-        channel_id: u32,
-        last_sequence_number: u32,
-    },
-    Error {
-        channel_id: u32,
-        sequence_number: u32,
-        error_code: String,
-    },
-    /// Nothing came back, which the protocol allows: shares are acknowledged in batches, so a
-    /// valid share need not be answered on its own.
-    Silence,
-    Unexpected {
-        message_type: u8,
-    },
-    /// The share named a channel the run never opened, so it was never sent.
-    Unresolved,
+/// What an action that awaited an answer was answered with.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub enum Response {
+    /// The action awaited nothing: a connect, a send, a wait.
+    None,
+    /// Never [`SetupResponse::Silence`]: silence is [`ActionOutcome::TimedOut`].
+    Setup(SetupResponse),
+    /// What a probe collected: the connection and message type of each frame.
+    Probed(Vec<(ConnectionId, u8)>),
+}
+
+/// What became of one compiled action.
+///
+/// Exactly one is recorded per action, in the action's order, so that an oracle can ask
+/// after every action it expects and find an answer, including that nothing happened and why.
+/// Iterating only over what did happen would let missing work pass unnoticed.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub enum ActionOutcome {
+    /// The action ran, and whatever it awaited arrived.
+    Completed(Response),
+    /// The action awaited an answer and none arrived before its deadline.
+    TimedOut,
+    /// The peer closed the connection before answering.
+    TransportClosed,
+    /// The transport failed in some other way, with the error's text.
+    TransportError(String),
+    /// A prerequisite of the action failed earlier, so it was not attempted.
+    Skipped(Prerequisite),
+    /// The harness could not carry the action out. A finding about the harness, never about
+    /// the deployment.
+    HarnessError(String),
 }
 
 /// The observable result of running a program.
-#[derive(Debug, Clone, Default)]
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct Execution {
+    /// One outcome per action of the program, in the program's order.
+    pub outcomes: Vec<ActionOutcome>,
     pub sessions: HashMap<SessionId, Session>,
     /// Which role each connection was opened to.
     pub connection_roles: HashMap<ConnectionId, usize>,
     /// Frames that arrived outside a request, collected at each `Probe`.
     pub unsolicited: Vec<(ConnectionId, u8)>,
-    /// What each channel a program opened was answered with.
-    pub channels: HashMap<ChannelSlot, ChannelOutcome>,
-    /// What each share a program submitted was answered with, in order.
-    pub shares: Vec<ShareOutcome>,
+    /// Everything each connection received, in order, and the state it left it in.
+    pub connections: HashMap<ConnectionId, ConnectionState>,
+}
+
+impl Execution {
+    /// The outcome of an action, if the run recorded one.
+    #[must_use]
+    pub fn outcome(&self, action: ActionId) -> Option<&ActionOutcome> {
+        self.outcomes.get(action)
+    }
+
+    /// Whether every action of the program has an outcome.
+    #[must_use]
+    pub fn is_total(&self, program: &CompiledProgram) -> bool {
+        self.outcomes.len() == program.actions.len()
+    }
 }
 
 /// Execute a compiled program against a deployment.
 ///
-/// Actions run in order, so against a simulated deployment the whole execution is a pure
-/// function of the program and the seed. Against a real one it is only as reproducible as
-/// the role itself.
+/// Actions run in order and each records exactly one outcome, so against a simulated
+/// deployment the whole execution is a pure function of the program and the seed. Against a
+/// real one it is only as reproducible as the role itself.
 #[must_use]
 pub fn run<D: Deployment>(deployment: &D, program: &CompiledProgram) -> Execution {
-    let mut connections: HashMap<ConnectionId, D::Transport<'_>> = HashMap::new();
-    let mut execution = Execution::default();
+    let mut runner = Runner {
+        deployment,
+        connections: HashMap::new(),
+        states: HashMap::new(),
+        execution: Execution::default(),
+    };
 
-    for action in &program.actions {
+    let actions = &program.actions;
+    let mut next = 0;
+    while next < actions.len() {
+        if let Some((unmet, end)) = runner.unmet_prerequisite(&actions[next]) {
+            // The block is skipped whole: every action in it, the exit included, records
+            // that it was, so that the trace says why nothing in there happened.
+            let end = end.min(actions.len() - 1);
+            for _ in next..=end {
+                runner
+                    .execution
+                    .outcomes
+                    .push(ActionOutcome::Skipped(unmet.clone()));
+            }
+            next = end + 1;
+            continue;
+        }
+        let outcome = runner.perform(&actions[next]);
+        runner.execution.outcomes.push(outcome);
+        next += 1;
+    }
+
+    debug_assert!(runner.execution.is_total(program));
+    runner.execution.connections = runner.states;
+    runner.execution
+}
+
+struct Runner<'d, D: Deployment> {
+    deployment: &'d D,
+    connections: HashMap<ConnectionId, D::Transport<'d>>,
+    states: HashMap<ConnectionId, ConnectionState>,
+    execution: Execution,
+}
+
+impl<D: Deployment> Runner<'_, D> {
+    /// For an action that opens a conditional block whose prerequisite the run has not met:
+    /// what is unmet, and the last action to skip because of it.
+    fn unmet_prerequisite(&self, action: &Action) -> Option<(Prerequisite, ActionId)> {
         match action {
+            Action::EnterOnSetupSuccess { session, end } => (!self.established(*session))
+                .then_some((Prerequisite::SetupSuccess(*session), *end)),
+            _ => None,
+        }
+    }
+
+    /// Whether the server agreed to the session's setup.
+    fn established(&self, session: SessionId) -> bool {
+        self.execution
+            .sessions
+            .get(&session)
+            .is_some_and(|s| matches!(s.response, SetupResponse::Success { .. }))
+    }
+
+    /// Receive and dispatch frames on a connection until `done` holds of its state, or
+    /// `timeout` passes with it not holding.
+    fn pump(
+        &mut self,
+        connection: ConnectionId,
+        timeout: Duration,
+        done: impl Fn(&ConnectionState) -> bool,
+    ) -> Result<(), ActionOutcome> {
+        let (Some(link), Some(state)) = (
+            self.connections.get_mut(&connection),
+            self.states.get_mut(&connection),
+        ) else {
+            return Err(ActionOutcome::Skipped(Prerequisite::ConnectionOpen(
+                connection,
+            )));
+        };
+        let deadline = Instant::now() + timeout;
+        loop {
+            if done(state) {
+                return Ok(());
+            }
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            if remaining.is_zero() {
+                return Err(ActionOutcome::TimedOut);
+            }
+            match link.recv(remaining) {
+                Ok(mut frame) => {
+                    state.dispatch(&mut frame);
+                }
+                Err(Error::Timeout) => {
+                    return if done(state) {
+                        Ok(())
+                    } else {
+                        Err(ActionOutcome::TimedOut)
+                    };
+                }
+                Err(e) => return Err(transport_failure(e)),
+            }
+        }
+    }
+
+    /// Carry out one action and say what became of it. Every path out of here is an outcome,
+    /// which is what makes the execution total.
+    fn perform(&mut self, action: &Action) -> ActionOutcome {
+        match action {
+            // Entering is decided by the loop, which has to skip a range; exiting is nothing.
+            Action::EnterOnSetupSuccess { .. } | Action::ExitBlock => {
+                ActionOutcome::Completed(Response::None)
+            }
+
             Action::Connect { connection, role } => {
-                let Some(link) = deployment.connect(*connection, *role) else {
-                    log::debug!("cannot address connection {connection} to role {role}");
-                    continue;
+                let Some(link) = self.deployment.connect(*connection, *role) else {
+                    log::debug!("cannot open connection {connection} to role {role}");
+                    return ActionOutcome::TransportError(format!(
+                        "could not open connection {connection} to role {role}"
+                    ));
                 };
-                connections.insert(*connection, link);
-                execution.connection_roles.insert(*connection, *role);
+                self.connections.insert(*connection, link);
+                self.states.insert(*connection, ConnectionState::default());
+                self.execution.connection_roles.insert(*connection, *role);
+                ActionOutcome::Completed(Response::None)
             }
 
             Action::Send {
@@ -143,12 +261,15 @@ pub fn run<D: Deployment>(deployment: &D, program: &CompiledProgram) -> Executio
                 channel_msg,
                 payload,
             } => {
-                let Some(link) = connections.get_mut(connection) else {
-                    log::debug!("send on unopened connection {connection}");
-                    continue;
+                let Some(link) = self.connections.get_mut(connection) else {
+                    return ActionOutcome::Skipped(Prerequisite::ConnectionOpen(*connection));
                 };
-                if let Err(e) = link.send(*extension_type, *message_type, *channel_msg, payload) {
-                    log::debug!("send failed on connection {connection}: {e}");
+                match link.send(*extension_type, *message_type, *channel_msg, payload) {
+                    Ok(()) => ActionOutcome::Completed(Response::None),
+                    Err(e) => {
+                        log::debug!("send failed on connection {connection}: {e}");
+                        transport_failure(e)
+                    }
                 }
             }
 
@@ -163,221 +284,91 @@ pub fn run<D: Deployment>(deployment: &D, program: &CompiledProgram) -> Executio
                 } else {
                     UNOWED_RESPONSE_WAIT
                 };
-                let Some(link) = connections.get_mut(connection) else {
-                    // The connection was never opened, so there is nothing on it to judge.
-                    // A liveness problem that kept it from opening is not this oracle's concern.
-                    log::debug!("no session {session}: connection {connection} was never opened");
-                    continue;
+                let Some(state) = self.states.get_mut(connection) else {
+                    return ActionOutcome::Skipped(Prerequisite::ConnectionOpen(*connection));
                 };
-                execution.sessions.insert(
+                state.setup = SetupState::Pending;
+                let outcome = match self.pump(*connection, wait, |state| {
+                    state.setup != SetupState::Pending
+                }) {
+                    Ok(()) => {
+                        let response = match &self.states[connection].setup {
+                            SetupState::Established {
+                                used_version,
+                                flags,
+                            } => SetupResponse::Success {
+                                used_version: *used_version,
+                                flags: *flags,
+                            },
+                            SetupState::Rejected { flags, error_code } => SetupResponse::Error {
+                                flags: *flags,
+                                error_code: error_code.clone(),
+                            },
+                            SetupState::Unexpected { message_type } => SetupResponse::Unexpected {
+                                message_type: *message_type,
+                            },
+                            SetupState::Unsent | SetupState::Pending => SetupResponse::Silence,
+                        };
+                        ActionOutcome::Completed(Response::Setup(response))
+                    }
+                    Err(failure) => failure,
+                };
+                let response = match &outcome {
+                    ActionOutcome::Completed(Response::Setup(response)) => response.clone(),
+                    _ => SetupResponse::Silence,
+                };
+                self.execution.sessions.insert(
                     *session,
                     Session {
                         connection: *connection,
                         protocol: *protocol,
                         first_on_connection: *first_on_connection,
-                        response: await_setup_response(link, wait),
+                        response,
                     },
                 );
+                outcome
             }
 
-            Action::OpenStandardMiningChannel {
-                connection,
-                channel,
-                request_id: _,
-                payload,
-                // Whether a frame of the program's own choosing came first is for the oracle
-                // to weigh, not for the runner: the open is sent either way.
-                after_raw_frame: _,
-            } => {
-                let Some(link) = connections.get_mut(connection) else {
-                    log::debug!("open channel on unopened connection {connection}");
-                    continue;
-                };
-                if let Err(e) =
-                    link.send(0, MESSAGE_TYPE_OPEN_STANDARD_MINING_CHANNEL, false, payload)
-                {
-                    log::debug!("open channel failed on connection {connection}: {e}");
-                }
-                let outcome = await_channel_open(link);
-                execution.channels.insert(*channel, outcome);
+            Action::AdvanceTime(duration) => {
+                self.deployment.advance_time(*duration);
+                ActionOutcome::Completed(Response::None)
             }
-
-            Action::SubmitSharesStandard {
-                connection,
-                channel_id,
-                sequence_number,
-                job_id,
-                nonce,
-                ntime,
-                version,
-            } => {
-                let (Some(channel_id), Some(job_id)) = (
-                    resolve(channel_id, &execution.channels),
-                    resolve(job_id, &execution.channels),
-                ) else {
-                    // The channel it names was never opened, so there is no share to send.
-                    execution.shares.push(ShareOutcome::Unresolved);
-                    continue;
-                };
-
-                let Some(link) = connections.get_mut(connection) else {
-                    execution.shares.push(ShareOutcome::Unresolved);
-                    continue;
-                };
-
-                let share = SubmitSharesStandard {
-                    channel_id,
-                    sequence_number: *sequence_number,
-                    job_id,
-                    nonce: *nonce,
-                    ntime: *ntime,
-                    version: *version,
-                };
-                let Ok(payload) = encode(share) else {
-                    execution.shares.push(ShareOutcome::Unresolved);
-                    continue;
-                };
-
-                // A share is a channel message, so the frame carries the channel bit.
-                if let Err(e) = link.send(0, MESSAGE_TYPE_SUBMIT_SHARES_STANDARD, true, &payload) {
-                    log::debug!("share submission failed on connection {connection}: {e}");
-                }
-                execution.shares.push(await_share_response(link));
-            }
-
-            Action::AdvanceTime(duration) => deployment.advance_time(*duration),
 
             Action::Probe => {
-                for (id, link) in &mut connections {
-                    while let Ok(frame) = link.recv(Duration::ZERO) {
-                        execution.unsolicited.push((*id, frame.header().msg_type()));
+                let mut probed = Vec::new();
+                for (id, link) in &mut self.connections {
+                    let Some(state) = self.states.get_mut(id) else {
+                        continue;
+                    };
+                    while let Ok(mut frame) = link.recv(Duration::ZERO) {
+                        probed.push((*id, frame.header().msg_type()));
+                        state.dispatch(&mut frame);
                     }
                 }
+                probed.sort_unstable();
+                self.execution.unsolicited.extend(probed.iter().copied());
+                ActionOutcome::Completed(Response::Probed(probed))
             }
         }
-    }
-
-    execution
-}
-
-fn await_setup_response<T: Transport>(link: &mut T, wait: Duration) -> SetupResponse {
-    let mut frame = match link.recv(wait) {
-        Ok(frame) => frame,
-        Err(Error::Timeout) => return SetupResponse::Silence,
-        Err(e) => {
-            log::debug!("receive failed: {e}");
-            return SetupResponse::Silence;
-        }
-    };
-
-    let message_type = frame.header().msg_type();
-    match frame.message() {
-        Ok(AnyMessage::Common(CommonMessages::SetupConnectionSuccess(success))) => {
-            SetupResponse::Success {
-                used_version: success.used_version,
-                flags: success.flags,
-            }
-        }
-        Ok(AnyMessage::Common(CommonMessages::SetupConnectionError(error))) => {
-            SetupResponse::Error {
-                flags: error.flags,
-                error_code: String::from_utf8_lossy(error.error_code.as_ref()).into_owned(),
-            }
-        }
-        _ => SetupResponse::Unexpected { message_type },
     }
 }
 
-/// Resolve an identifier a message names, which is either written down or taken from what the
-/// server assigned to a channel.
-fn resolve(source: &IdSource, channels: &HashMap<ChannelSlot, ChannelOutcome>) -> Option<u32> {
-    match source {
-        IdSource::Literal(value) => Some(*value),
-        IdSource::ChannelId(slot) => match channels.get(slot)? {
-            ChannelOutcome::Success { channel_id, .. } => Some(*channel_id),
-            _ => None,
-        },
-        IdSource::JobId(slot) => match channels.get(slot)? {
-            ChannelOutcome::Success { job_id, .. } => *job_id,
-            _ => None,
-        },
-    }
-}
-
-/// Read the answer to a channel open, and the job that follows a successful one.
-fn await_channel_open<T: Transport>(link: &mut T) -> ChannelOutcome {
-    let mut frame = match link.recv(RESPONSE_TIMEOUT) {
-        Ok(frame) => frame,
-        Err(_) => return ChannelOutcome::Silence,
-    };
-
-    let message_type = frame.header().msg_type();
-    let mut outcome = match frame.message() {
-        Ok(AnyMessage::Mining(Mining::OpenStandardMiningChannelSuccess(success))) => {
-            ChannelOutcome::Success {
-                request_id: success.request_id,
-                channel_id: success.channel_id,
-                group_channel_id: success.group_channel_id,
-                job_id: None,
-            }
-        }
-        Ok(AnyMessage::Mining(Mining::OpenMiningChannelError(error))) => ChannelOutcome::Error {
-            request_id: error.request_id,
-            error_code: String::from_utf8_lossy(error.error_code.as_ref()).into_owned(),
-        },
-        _ => ChannelOutcome::Unexpected { message_type },
-    };
-
-    if !matches!(outcome, ChannelOutcome::Success { .. }) {
-        return outcome;
-    }
-
-    // The job and the prevhash follow the success on the same connection. Either names the job
-    // the channel is to mine, so the first one that arrives settles it.
-    for _ in 0..2 {
-        let Ok(mut frame) = link.recv(RESPONSE_TIMEOUT) else {
-            break;
-        };
-        let announced = match frame.message() {
-            Ok(AnyMessage::Mining(Mining::NewMiningJob(job))) => Some(job.job_id),
-            Ok(AnyMessage::Mining(Mining::SetNewPrevHash(prev_hash))) => Some(prev_hash.job_id),
-            _ => None,
-        };
-        if let (Some(announced), ChannelOutcome::Success { job_id, .. }) = (announced, &mut outcome)
-            && job_id.is_none()
+/// The outcome a transport error amounts to.
+fn transport_failure(error: Error) -> ActionOutcome {
+    match error {
+        Error::Timeout => ActionOutcome::TimedOut,
+        Error::Io(e)
+            if matches!(
+                e.kind(),
+                ErrorKind::UnexpectedEof
+                    | ErrorKind::ConnectionReset
+                    | ErrorKind::ConnectionAborted
+                    | ErrorKind::BrokenPipe
+                    | ErrorKind::NotConnected
+            ) =>
         {
-            *job_id = Some(announced);
+            ActionOutcome::TransportClosed
         }
+        other => ActionOutcome::TransportError(other.to_string()),
     }
-
-    outcome
-}
-
-/// Read whatever a share drew, without insisting on an answer: a valid share is acknowledged
-/// in batches, so silence is a legitimate outcome rather than a missing one.
-fn await_share_response<T: Transport>(link: &mut T) -> ShareOutcome {
-    let mut frame = match link.recv(UNOWED_RESPONSE_WAIT) {
-        Ok(frame) => frame,
-        Err(_) => return ShareOutcome::Silence,
-    };
-
-    let message_type = frame.header().msg_type();
-    match frame.message() {
-        Ok(AnyMessage::Mining(Mining::SubmitSharesSuccess(success))) => ShareOutcome::Success {
-            channel_id: success.channel_id,
-            last_sequence_number: success.last_sequence_number,
-        },
-        Ok(AnyMessage::Mining(Mining::SubmitSharesError(error))) => ShareOutcome::Error {
-            channel_id: error.channel_id,
-            sequence_number: error.sequence_number,
-            error_code: String::from_utf8_lossy(error.error_code.as_ref()).into_owned(),
-        },
-        _ => ShareOutcome::Unexpected { message_type },
-    }
-}
-
-fn encode<T: Sv2Serialize + GetSize>(message: T) -> Result<Vec<u8>, ()> {
-    let mut payload = vec![0u8; message.get_size()];
-    to_writer(message, &mut payload).map_err(|_| ())?;
-    Ok(payload)
 }

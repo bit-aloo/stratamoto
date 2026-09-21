@@ -31,7 +31,6 @@ apply unchanged.
 | oracle | what it checks |
 | --- | --- |
 | `SetupConnectionOracle` | the answer to a `SetupConnection` is one the specification allows |
-| `MiningChannelOracle` | a channel open is answered for the request it belongs to, and channel identifiers are not reused on a connection |
 | `CrashOracle` | the role is still serving after the run |
 
 These check what the specification states, not what one implementation happens to do. Section 3.5
@@ -47,12 +46,13 @@ drown the real ones.
 use stratamoto::scenario::{Scenario, ScenarioResult};
 
 impl Scenario<TestCase> for MyScenario {
-    fn new(seed: u64) -> Result<Self> { /* build the deployment */ }
+    fn new() -> Result<Self> { /* bring up what every test case shares */ }
     fn run(&mut self, testcase: TestCase) -> ScenarioResult { /* run and judge */ }
 }
 
 stratamoto_main!(MyScenario, TestCase);
 ```
 
-`stratamoto_main!` reads the seed from `STRATAMOTO_SEED` and the program from `STRATAMOTO_INPUT`
-or stdin, and turns the result into an exit code.
+`stratamoto_main!` reads the input from `STRATAMOTO_INPUT` or stdin and turns the result into an
+exit code. Everything a run depends on travels with the input: a program carries the seed its
+simulated deployment is built from, so there is no seed to read from the environment.

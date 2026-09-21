@@ -1,6 +1,9 @@
+pub mod backend;
 pub mod connection;
 pub mod deployment;
+pub mod digest;
 pub mod error;
+pub mod events;
 pub mod noise;
 pub mod oracle;
 pub mod roles;
