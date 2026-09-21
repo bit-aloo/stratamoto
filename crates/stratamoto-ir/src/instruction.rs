@@ -26,32 +26,6 @@ impl Instruction {
         !self.operation.is_block_begin() && !self.operation.is_block_end()
     }
 
-    /// Whether the operation carries data a mutator may rewrite in place.
-    #[must_use]
-    pub fn is_operation_mutable(&self) -> bool {
-        matches!(
-            self.operation,
-            Operation::LoadRole(_)
-                | Operation::LoadConnection(_)
-                | Operation::LoadVersion(_)
-                | Operation::LoadFlags(_)
-                | Operation::LoadPort(_)
-                | Operation::LoadStr(_)
-                | Operation::LoadBytes(_)
-                | Operation::LoadDuration(_)
-                | Operation::LoadRequestId(_)
-                | Operation::LoadHashrate(_)
-                | Operation::LoadTarget(_)
-                | Operation::LoadChannelId(_)
-                | Operation::LoadJobId(_)
-                | Operation::LoadSequenceNumber(_)
-                | Operation::LoadNonce(_)
-                | Operation::LoadNtime(_)
-                | Operation::LoadBlockVersion(_)
-                | Operation::SendRawFrame { .. }
-        )
-    }
-
     pub fn nop(&mut self) {
         self.inputs.clear();
         self.operation = Operation::Nop {
@@ -65,6 +39,7 @@ impl Instruction {
     pub fn entered_context_after_execution(&self) -> Option<InstructionContext> {
         match self.operation {
             Operation::BeginBuildSetupConnection => Some(InstructionContext::BuildSetupConnection),
+            Operation::BeginOnSetupSuccess { .. } => Some(InstructionContext::OnSetupSuccess),
             _ => None,
         }
     }
@@ -75,4 +50,6 @@ impl Instruction {
 pub enum InstructionContext {
     Global,
     BuildSetupConnection,
+    /// Inside a block that runs only once the server agreed to a setup.
+    OnSetupSuccess,
 }

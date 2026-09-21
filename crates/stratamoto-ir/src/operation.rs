@@ -7,8 +7,9 @@ use crate::{Protocol, Variable, errors::ProgramValidationError};
 /// `Operation` is a single action a program can perform on a deployment.
 ///
 /// The variable types an operation consumes and produces are what encode the relationship
-/// between messages: a message can only be sent on a session that a `SetupConnection` for
-/// its subprotocol produced.
+/// between messages: a session exists only inside the block that waits for the server to
+/// agree to a `SetupConnection`, so nothing that needs one can run on a connection that was
+/// never set up.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Operation {
     /// No operation, used for minimization.
@@ -27,50 +28,33 @@ pub enum Operation {
     LoadBytes(Vec<u8>),
     LoadDuration(Duration),
 
-    /// Open a new transport from the harness to a role.
+    /// Open a transport to a role.
     Connect,
 
-    /// `SetupConnection` construction. The subprotocol is decided when the message is
-    /// finalized, so the setters are shared by all subprotocols.
+    /// Begin building a `SetupConnection`. The block it opens holds the message under
+    /// construction; every field keeps the value a client would send until an operation
+    /// inside the block sets it.
     BeginBuildSetupConnection,
     SetVersions,
     SetFlags,
     SetEndpoint,
     SetDeviceInfo,
+    /// Finalize the message for a subprotocol.
     EndBuildSetupConnection {
         protocol: Protocol,
     },
 
-    /// Send a `SetupConnection` and bind the upstream's answer to a session.
+    /// Send a finalized `SetupConnection`. What it produces is an attempt: whether the server
+    /// agreed is known only once it answers, and only then is there a session.
     SendSetupConnection {
         protocol: Protocol,
     },
-
-    /// Mining protocol values.
-    LoadRequestId(u32),
-    /// A nominal hash rate, as the bits of the `f32` the wire carries. Bits rather than a
-    /// float because an operation has to compare equal and hash, and because it lets a
-    /// mutation reach the values a float has and an integer does not.
-    LoadHashrate(u32),
-    LoadTarget([u8; 32]),
-    LoadChannelId(u32),
-    LoadJobId(u32),
-    LoadSequenceNumber(u32),
-    LoadNonce(u32),
-    LoadNtime(u32),
-    LoadBlockVersion(u32),
-
-    /// Open a standard mining channel on a mining session.
-    ///
-    /// The channel it produces is bound when the server answers, since the identifiers belong
-    /// to the server, not to the program.
-    OpenStandardMiningChannel,
-    /// The identifier the server assigned to a channel.
-    ChannelIdOf,
-    /// The job the server announced on a channel.
-    JobIdOf,
-    /// Submit a share against a job on a channel.
-    SubmitSharesStandard,
+    /// Open a block that runs only if the server answered the attempt with
+    /// `SetupConnection.Success`. Inside it, and nowhere else, is the session it agreed to.
+    BeginOnSetupSuccess {
+        protocol: Protocol,
+    },
+    EndOnSetupSuccess,
 
     /// Send arbitrary bytes as a frame payload, bypassing message construction.
     SendRawFrame {
@@ -87,12 +71,18 @@ pub enum Operation {
 impl Operation {
     #[must_use]
     pub fn is_block_begin(&self) -> bool {
-        matches!(self, Operation::BeginBuildSetupConnection)
+        matches!(
+            self,
+            Operation::BeginBuildSetupConnection | Operation::BeginOnSetupSuccess { .. }
+        )
     }
 
     #[must_use]
     pub fn is_block_end(&self) -> bool {
-        matches!(self, Operation::EndBuildSetupConnection { .. })
+        matches!(
+            self,
+            Operation::EndBuildSetupConnection { .. } | Operation::EndOnSetupSuccess
+        )
     }
 
     #[must_use]
@@ -102,6 +92,9 @@ impl Operation {
             (
                 Operation::EndBuildSetupConnection { .. },
                 Operation::BeginBuildSetupConnection
+            ) | (
+                Operation::EndOnSetupSuccess,
+                Operation::BeginOnSetupSuccess { .. }
             )
         )
     }
@@ -126,29 +119,18 @@ impl Operation {
             Operation::EndBuildSetupConnection { protocol } => {
                 vec![Variable::ConstSetupConnection(*protocol)]
             }
-            Operation::SendSetupConnection { protocol } => vec![Variable::Session(*protocol)],
-
-            Operation::LoadRequestId(_) => vec![Variable::RequestId],
-            Operation::LoadHashrate(_) => vec![Variable::Hashrate],
-            Operation::LoadTarget(_) => vec![Variable::Target],
-            Operation::LoadChannelId(_) => vec![Variable::ChannelId],
-            Operation::LoadJobId(_) => vec![Variable::JobId],
-            Operation::LoadSequenceNumber(_) => vec![Variable::SequenceNumber],
-            Operation::LoadNonce(_) => vec![Variable::Nonce],
-            Operation::LoadNtime(_) => vec![Variable::Ntime],
-            Operation::LoadBlockVersion(_) => vec![Variable::BlockVersion],
-
-            Operation::OpenStandardMiningChannel => vec![Variable::Channel],
-            Operation::ChannelIdOf => vec![Variable::ChannelId],
-            Operation::JobIdOf => vec![Variable::JobId],
+            Operation::SendSetupConnection { protocol } => {
+                vec![Variable::SetupAttempt(*protocol)]
+            }
 
             Operation::BeginBuildSetupConnection
+            | Operation::BeginOnSetupSuccess { .. }
+            | Operation::EndOnSetupSuccess
             | Operation::SetVersions
             | Operation::SetFlags
             | Operation::SetEndpoint
             | Operation::SetDeviceInfo
             | Operation::SendRawFrame { .. }
-            | Operation::SubmitSharesStandard
             | Operation::AdvanceTime
             | Operation::Probe => vec![],
         }
@@ -160,6 +142,7 @@ impl Operation {
         match self {
             Operation::Nop { inner_outputs, .. } => vec![Variable::Nop; *inner_outputs],
             Operation::BeginBuildSetupConnection => vec![Variable::MutSetupConnection],
+            Operation::BeginOnSetupSuccess { protocol } => vec![Variable::Session(*protocol)],
             _ => vec![],
         }
     }
@@ -191,28 +174,9 @@ impl Operation {
                 Variable::Connection,
                 Variable::ConstSetupConnection(*protocol),
             ],
+            Operation::BeginOnSetupSuccess { protocol } => vec![Variable::SetupAttempt(*protocol)],
+            Operation::EndOnSetupSuccess => vec![],
             Operation::SendRawFrame { .. } => vec![Variable::Connection, Variable::Bytes],
-
-            // A mining message may only be sent on a session that was set up for mining, and a
-            // share may only name a channel and a job, which is what ties it to an open the
-            // server answered.
-            Operation::OpenStandardMiningChannel => vec![
-                Variable::Session(Protocol::Mining),
-                Variable::RequestId,
-                Variable::Str,
-                Variable::Hashrate,
-                Variable::Target,
-            ],
-            Operation::ChannelIdOf | Operation::JobIdOf => vec![Variable::Channel],
-            Operation::SubmitSharesStandard => vec![
-                Variable::Session(Protocol::Mining),
-                Variable::ChannelId,
-                Variable::SequenceNumber,
-                Variable::JobId,
-                Variable::Nonce,
-                Variable::Ntime,
-                Variable::BlockVersion,
-            ],
 
             Operation::AdvanceTime => vec![Variable::Duration],
 
@@ -225,15 +189,6 @@ impl Operation {
             | Operation::LoadStr(_)
             | Operation::LoadBytes(_)
             | Operation::LoadDuration(_)
-            | Operation::LoadRequestId(_)
-            | Operation::LoadHashrate(_)
-            | Operation::LoadTarget(_)
-            | Operation::LoadChannelId(_)
-            | Operation::LoadJobId(_)
-            | Operation::LoadSequenceNumber(_)
-            | Operation::LoadNonce(_)
-            | Operation::LoadNtime(_)
-            | Operation::LoadBlockVersion(_)
             | Operation::BeginBuildSetupConnection
             | Operation::Probe => vec![],
         }
@@ -298,6 +253,10 @@ impl fmt::Display for Operation {
             Operation::SendSetupConnection { protocol } => {
                 write!(f, "SendSetupConnection<{protocol}>")
             }
+            Operation::BeginOnSetupSuccess { protocol } => {
+                write!(f, "BeginOnSetupSuccess<{protocol}>")
+            }
+            Operation::EndOnSetupSuccess => write!(f, "EndOnSetupSuccess"),
             Operation::SendRawFrame {
                 message_type,
                 extension_type,
@@ -305,21 +264,6 @@ impl fmt::Display for Operation {
                 f,
                 "SendRawFrame(0x{message_type:02x}, 0x{extension_type:04x})"
             ),
-            Operation::LoadRequestId(v) => write!(f, "LoadRequestId({v})"),
-            Operation::LoadHashrate(v) => {
-                write!(f, "LoadHashrate({})", f32::from_bits(*v))
-            }
-            Operation::LoadTarget(_) => write!(f, "LoadTarget(..)"),
-            Operation::LoadChannelId(v) => write!(f, "LoadChannelId({v})"),
-            Operation::LoadJobId(v) => write!(f, "LoadJobId({v})"),
-            Operation::LoadSequenceNumber(v) => write!(f, "LoadSequenceNumber({v})"),
-            Operation::LoadNonce(v) => write!(f, "LoadNonce({v})"),
-            Operation::LoadNtime(v) => write!(f, "LoadNtime({v})"),
-            Operation::LoadBlockVersion(v) => write!(f, "LoadBlockVersion(0x{v:08x})"),
-            Operation::OpenStandardMiningChannel => write!(f, "OpenStandardMiningChannel"),
-            Operation::ChannelIdOf => write!(f, "ChannelIdOf"),
-            Operation::JobIdOf => write!(f, "JobIdOf"),
-            Operation::SubmitSharesStandard => write!(f, "SubmitSharesStandard"),
             Operation::AdvanceTime => write!(f, "AdvanceTime"),
             Operation::Probe => write!(f, "Probe"),
         }

@@ -26,12 +26,9 @@ fn reached(rounds: usize) -> (Vec<SetupConnectionSpec>, bool) {
     let mut rng = SmallRng::seed_from_u64(1);
 
     let mut builder = ProgramBuilder::new(context.clone());
-    SetupConnectionGenerator {
-        role: 0,
-        protocol: None,
-    }
-    .generate(&mut builder, &mut rng)
-    .unwrap();
+    SetupConnectionGenerator::new(0)
+        .generate(&mut builder, &mut rng)
+        .unwrap();
     let mut corpus: Vec<Program> = vec![builder.finalize().unwrap()];
 
     let mut specs = Vec::new();
@@ -51,11 +48,8 @@ fn reached(rounds: usize) -> (Vec<SetupConnectionSpec>, bool) {
                 3 => {
                     GeneratorMutator::new(RawFrameGenerator { role }).mutate(&mut program, &mut rng)
                 }
-                _ => GeneratorMutator::new(SetupConnectionGenerator {
-                    role,
-                    protocol: None,
-                })
-                .mutate(&mut program, &mut rng),
+                _ => GeneratorMutator::new(SetupConnectionGenerator::new(role))
+                    .mutate(&mut program, &mut rng),
             };
             applied |= result.is_ok();
         }

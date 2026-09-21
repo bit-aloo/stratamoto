@@ -8,7 +8,6 @@ use serde::{Deserialize, Serialize};
 use stratum_core::{
     binary_sv2::{GetSize, Serialize as Sv2Serialize, Str0255, to_writer},
     common_messages_sv2::{MESSAGE_TYPE_SETUP_CONNECTION, SetupConnection},
-    mining_sv2::OpenStandardMiningChannel,
 };
 
 use crate::{Instruction, Operation, Program, ProgramContext, Protocol};
@@ -16,32 +15,9 @@ use crate::{Instruction, Operation, Program, ProgramContext, Protocol};
 pub type RoleId = usize;
 pub type ConnectionId = usize;
 pub type SessionId = usize;
+/// Index of an action in the compiled program it belongs to.
+pub type ActionId = usize;
 pub type VariableIndex = usize;
-/// A mining channel a program opened, identified by the order it was opened in.
-pub type ChannelSlot = usize;
-
-/// Where the `channel_id` or `job_id` of a mining message comes from.
-///
-/// A program can write an identifier down, or take the one the server assigned. Only the
-/// second can name a channel that exists, and keeping the difference is the whole point of
-/// binding channels at run time.
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
-pub enum IdSource {
-    Literal(u32),
-    /// The identifier the server gave the channel in this slot.
-    ChannelId(ChannelSlot),
-    /// The job the server announced on the channel in this slot.
-    JobId(ChannelSlot),
-}
-
-/// The `OpenStandardMiningChannel` a program asked for.
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-pub struct ChannelOpenSpec {
-    pub request_id: u32,
-    pub user_identity: String,
-    pub nominal_hash_rate: f32,
-    pub max_target: [u8; 32],
-}
 
 /// A `SetupConnection` as the program describes it, before it is encoded.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
@@ -75,6 +51,19 @@ impl Default for SetupConnectionSpec {
     }
 }
 
+/// A way the program departed from what the protocol requires of a client.
+///
+/// A generator may do any of these on purpose, and a mutator by accident. Either way the
+/// server's obligations are relaxed: what it answers, or does not, to a message the client
+/// should not have sent is not constrained, and an oracle must not hold it to one.
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum ClientViolation {
+    /// The `SetupConnection` was not the first message on its connection.
+    SetupNotFirst,
+    /// A frame of the program's own choosing preceded the message on its connection.
+    RawFrameBefore,
+}
+
 /// A single step of a compiled program, ready to be executed against a deployment.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub enum Action {
@@ -100,30 +89,15 @@ pub enum Action {
         /// the only one a server owes an answer to.
         first_on_connection: bool,
     },
-    /// Open a standard mining channel, binding what the server answers to a slot.
-    OpenStandardMiningChannel {
-        connection: ConnectionId,
-        channel: ChannelSlot,
-        request_id: u32,
-        payload: Vec<u8>,
-        /// Whether the program had already put a frame of its own choosing on this
-        /// connection. A server may drop a client that sends something it does not accept, so
-        /// after one of those nothing it does or does not answer is owed.
-        after_raw_frame: bool,
+    /// Run what follows, up to the matching exit, only if the server agreed to the session's
+    /// setup; skip it all otherwise.
+    EnterOnSetupSuccess {
+        session: SessionId,
+        /// The exit that closes the block, which is the last action skipped.
+        end: ActionId,
     },
-    /// Submit a share against a job on a channel.
-    ///
-    /// Unlike the other sends this one is not encoded ahead of time: the identifiers it names
-    /// belong to the server, so they are only known once it has answered.
-    SubmitSharesStandard {
-        connection: ConnectionId,
-        channel_id: IdSource,
-        sequence_number: u32,
-        job_id: IdSource,
-        nonce: u32,
-        ntime: u32,
-        version: u32,
-    },
+    /// The end of a conditional block.
+    ExitBlock,
     AdvanceTime(Duration),
     /// Collect everything the deployment sent since the previous probe.
     Probe,
@@ -142,14 +116,15 @@ pub struct CompiledProgram {
 pub struct CompiledMetadata {
     /// Instruction index each action was compiled from.
     pub action_instructions: Vec<usize>,
-    /// Variable index that defines each session.
+    /// Variable index of the attempt that defines each session.
     pub session_variables: HashMap<SessionId, VariableIndex>,
     /// Variable index that defines each connection.
     pub connection_variables: HashMap<ConnectionId, VariableIndex>,
     /// The `SetupConnection` sent on each session.
     pub session_setups: HashMap<SessionId, SetupConnectionSpec>,
-    /// The `OpenStandardMiningChannel` sent for each channel slot.
-    pub channel_opens: HashMap<ChannelSlot, ChannelOpenSpec>,
+    /// How each action departed from what a client is required to do, for the actions that
+    /// did. Attached here so that an oracle reads the classification rather than derive it.
+    pub violations: HashMap<ActionId, Vec<ClientViolation>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -160,6 +135,8 @@ pub enum CompilerError {
     UnexpectedValue(usize),
     /// A string field exceeded the 255 bytes `STR0_255` allows.
     StringTooLong(usize),
+    /// A block end with no block to end, i.e. the program was not validated.
+    UnbalancedBlock,
     Encoding(String),
 }
 
@@ -169,6 +146,7 @@ impl fmt::Display for CompilerError {
             CompilerError::MissingValue(i) => write!(f, "v{i} has no value"),
             CompilerError::UnexpectedValue(i) => write!(f, "v{i} has the wrong type"),
             CompilerError::StringTooLong(i) => write!(f, "v{i} is longer than 255 bytes"),
+            CompilerError::UnbalancedBlock => write!(f, "a block ends that never began"),
             CompilerError::Encoding(e) => write!(f, "encoding failed: {e}"),
         }
     }
@@ -181,17 +159,13 @@ enum Value {
     Nop,
     Role(RoleId),
     Connection(ConnectionId),
-    Session { connection: ConnectionId },
-    Channel(ChannelSlot),
-    ChannelId(IdSource),
-    JobId(IdSource),
-    RequestId(u32),
-    Hashrate(u32),
-    Target([u8; 32]),
-    SequenceNumber(u32),
-    Nonce(u32),
-    Ntime(u32),
-    BlockVersion(u32),
+    SetupAttempt {
+        session: SessionId,
+        connection: ConnectionId,
+    },
+    /// A session the server agreed to. It carries nothing yet: no operation consumes one, and
+    /// what a subprotocol's messages will need of it is theirs to add.
+    Session,
     Version(u16),
     Flags(u32),
     Port(u16),
@@ -209,11 +183,12 @@ pub struct Compiler {
     metadata: CompiledMetadata,
     connections: usize,
     sessions: usize,
-    channels: usize,
     /// Connections something has already been sent on.
     sent: HashSet<ConnectionId>,
     /// Connections the program has put a frame of its own choosing on.
     raw_framed: HashSet<ConnectionId>,
+    /// The enter actions of the conditional blocks still open, innermost last.
+    blocks: Vec<ActionId>,
 }
 
 impl Compiler {
@@ -239,9 +214,16 @@ impl Compiler {
         })
     }
 
-    fn push_action(&mut self, instruction: usize, action: Action) {
+    fn push_action(&mut self, instruction: usize, action: Action) -> ActionId {
         self.metadata.action_instructions.push(instruction);
         self.actions.push(action);
+        self.actions.len() - 1
+    }
+
+    fn note(&mut self, action: ActionId, violations: Vec<ClientViolation>) {
+        if !violations.is_empty() {
+            self.metadata.violations.insert(action, violations);
+        }
     }
 
     fn value(&self, index: usize) -> Result<&Value, CompilerError> {
@@ -275,87 +257,6 @@ impl Compiler {
             Operation::LoadStr(v) => self.values.push(Value::Str(v.clone())),
             Operation::LoadBytes(v) => self.values.push(Value::Bytes(v.clone())),
             Operation::LoadDuration(v) => self.values.push(Value::Duration(*v)),
-
-            Operation::LoadRequestId(v) => self.values.push(Value::RequestId(*v)),
-            Operation::LoadHashrate(v) => self.values.push(Value::Hashrate(*v)),
-            Operation::LoadTarget(v) => self.values.push(Value::Target(*v)),
-            Operation::LoadChannelId(v) => {
-                self.values.push(Value::ChannelId(IdSource::Literal(*v)));
-            }
-            Operation::LoadJobId(v) => self.values.push(Value::JobId(IdSource::Literal(*v))),
-            Operation::LoadSequenceNumber(v) => self.values.push(Value::SequenceNumber(*v)),
-            Operation::LoadNonce(v) => self.values.push(Value::Nonce(*v)),
-            Operation::LoadNtime(v) => self.values.push(Value::Ntime(*v)),
-            Operation::LoadBlockVersion(v) => self.values.push(Value::BlockVersion(*v)),
-
-            Operation::OpenStandardMiningChannel => {
-                let connection = self.session_connection(inputs[0])?;
-                let request_id = self.request_id(inputs[1])?;
-                let user_identity = self.string(inputs[2])?;
-                let nominal_hash_rate = f32::from_bits(self.hashrate(inputs[3])?);
-                let max_target = self.target(inputs[4])?;
-
-                let spec = ChannelOpenSpec {
-                    request_id,
-                    user_identity,
-                    nominal_hash_rate,
-                    max_target,
-                };
-                let payload = encode_open_standard_mining_channel(&spec, inputs[2])?;
-
-                let channel = self.channels;
-                self.channels += 1;
-                self.metadata.channel_opens.insert(channel, spec);
-                self.values.push(Value::Channel(channel));
-                self.sent.insert(connection);
-                let after_raw_frame = self.raw_framed.contains(&connection);
-
-                self.push_action(
-                    index,
-                    Action::OpenStandardMiningChannel {
-                        connection,
-                        channel,
-                        request_id,
-                        payload,
-                        after_raw_frame,
-                    },
-                );
-            }
-
-            Operation::ChannelIdOf => {
-                let channel = self.channel(inputs[0])?;
-                self.values
-                    .push(Value::ChannelId(IdSource::ChannelId(channel)));
-            }
-
-            Operation::JobIdOf => {
-                let channel = self.channel(inputs[0])?;
-                self.values.push(Value::JobId(IdSource::JobId(channel)));
-            }
-
-            Operation::SubmitSharesStandard => {
-                let connection = self.session_connection(inputs[0])?;
-                let channel_id = self.channel_id(inputs[1])?;
-                let sequence_number = self.sequence_number(inputs[2])?;
-                let job_id = self.job_id(inputs[3])?;
-                let nonce = self.nonce(inputs[4])?;
-                let ntime = self.ntime(inputs[5])?;
-                let version = self.block_version(inputs[6])?;
-
-                self.sent.insert(connection);
-                self.push_action(
-                    index,
-                    Action::SubmitSharesStandard {
-                        connection,
-                        channel_id,
-                        sequence_number,
-                        job_id,
-                        nonce,
-                        ntime,
-                        version,
-                    },
-                );
-            }
 
             Operation::Connect => {
                 let role = self.role(inputs[0])?;
@@ -426,7 +327,10 @@ impl Compiler {
                     .session_variables
                     .insert(session, self.values.len());
                 self.metadata.session_setups.insert(session, spec);
-                self.values.push(Value::Session { connection });
+                self.values.push(Value::SetupAttempt {
+                    session,
+                    connection,
+                });
 
                 self.push_action(
                     index,
@@ -438,7 +342,7 @@ impl Compiler {
                         payload,
                     },
                 );
-                self.push_action(
+                let action = self.push_action(
                     index,
                     Action::AwaitSetupResponse {
                         connection,
@@ -447,6 +351,37 @@ impl Compiler {
                         first_on_connection,
                     },
                 );
+                let mut violations = Vec::new();
+                if !first_on_connection {
+                    violations.push(ClientViolation::SetupNotFirst);
+                }
+                if self.raw_framed.contains(&connection) {
+                    violations.push(ClientViolation::RawFrameBefore);
+                }
+                self.note(action, violations);
+            }
+
+            Operation::BeginOnSetupSuccess { .. } => {
+                let (session, _) = self.attempt(inputs[0])?;
+                // The exit is not compiled yet, so the block's end is patched in when it is.
+                let enter = self.push_action(
+                    index,
+                    Action::EnterOnSetupSuccess {
+                        session,
+                        end: ActionId::MAX,
+                    },
+                );
+                self.blocks.push(enter);
+                self.values.push(Value::Session);
+            }
+
+            Operation::EndOnSetupSuccess => {
+                let enter = self.blocks.pop().ok_or(CompilerError::UnbalancedBlock)?;
+                let exit = self.push_action(index, Action::ExitBlock);
+                match &mut self.actions[enter] {
+                    Action::EnterOnSetupSuccess { end, .. } => *end = exit,
+                    _ => return Err(CompilerError::UnbalancedBlock),
+                }
             }
 
             Operation::SendRawFrame {
@@ -474,7 +409,9 @@ impl Compiler {
                 self.push_action(index, Action::AdvanceTime(duration));
             }
 
-            Operation::Probe => self.push_action(index, Action::Probe),
+            Operation::Probe => {
+                self.push_action(index, Action::Probe);
+            }
         }
 
         Ok(())
@@ -536,79 +473,12 @@ impl Compiler {
         }
     }
 
-    fn session_connection(&self, i: usize) -> Result<ConnectionId, CompilerError> {
+    fn attempt(&self, i: usize) -> Result<(SessionId, ConnectionId), CompilerError> {
         match self.value(i)? {
-            Value::Session { connection } => Ok(*connection),
-            _ => Err(CompilerError::UnexpectedValue(i)),
-        }
-    }
-
-    fn channel(&self, i: usize) -> Result<ChannelSlot, CompilerError> {
-        match self.value(i)? {
-            Value::Channel(v) => Ok(*v),
-            _ => Err(CompilerError::UnexpectedValue(i)),
-        }
-    }
-
-    fn channel_id(&self, i: usize) -> Result<IdSource, CompilerError> {
-        match self.value(i)? {
-            Value::ChannelId(v) => Ok(v.clone()),
-            _ => Err(CompilerError::UnexpectedValue(i)),
-        }
-    }
-
-    fn job_id(&self, i: usize) -> Result<IdSource, CompilerError> {
-        match self.value(i)? {
-            Value::JobId(v) => Ok(v.clone()),
-            _ => Err(CompilerError::UnexpectedValue(i)),
-        }
-    }
-
-    fn request_id(&self, i: usize) -> Result<u32, CompilerError> {
-        match self.value(i)? {
-            Value::RequestId(v) => Ok(*v),
-            _ => Err(CompilerError::UnexpectedValue(i)),
-        }
-    }
-
-    fn hashrate(&self, i: usize) -> Result<u32, CompilerError> {
-        match self.value(i)? {
-            Value::Hashrate(v) => Ok(*v),
-            _ => Err(CompilerError::UnexpectedValue(i)),
-        }
-    }
-
-    fn target(&self, i: usize) -> Result<[u8; 32], CompilerError> {
-        match self.value(i)? {
-            Value::Target(v) => Ok(*v),
-            _ => Err(CompilerError::UnexpectedValue(i)),
-        }
-    }
-
-    fn sequence_number(&self, i: usize) -> Result<u32, CompilerError> {
-        match self.value(i)? {
-            Value::SequenceNumber(v) => Ok(*v),
-            _ => Err(CompilerError::UnexpectedValue(i)),
-        }
-    }
-
-    fn nonce(&self, i: usize) -> Result<u32, CompilerError> {
-        match self.value(i)? {
-            Value::Nonce(v) => Ok(*v),
-            _ => Err(CompilerError::UnexpectedValue(i)),
-        }
-    }
-
-    fn ntime(&self, i: usize) -> Result<u32, CompilerError> {
-        match self.value(i)? {
-            Value::Ntime(v) => Ok(*v),
-            _ => Err(CompilerError::UnexpectedValue(i)),
-        }
-    }
-
-    fn block_version(&self, i: usize) -> Result<u32, CompilerError> {
-        match self.value(i)? {
-            Value::BlockVersion(v) => Ok(*v),
+            Value::SetupAttempt {
+                session,
+                connection,
+            } => Ok((*session, *connection)),
             _ => Err(CompilerError::UnexpectedValue(i)),
         }
     }
@@ -663,17 +533,4 @@ fn str0_255(value: &str, variable: usize) -> Result<Str0255<'_>, CompilerError> 
     value
         .try_into()
         .map_err(|_| CompilerError::StringTooLong(variable))
-}
-
-fn encode_open_standard_mining_channel(
-    spec: &ChannelOpenSpec,
-    variable: usize,
-) -> Result<Vec<u8>, CompilerError> {
-    let message = OpenStandardMiningChannel {
-        request_id: spec.request_id,
-        user_identity: str0_255(&spec.user_identity, variable)?,
-        nominal_hash_rate: spec.nominal_hash_rate,
-        max_target: (&spec.max_target).into(),
-    };
-    encode(message)
 }

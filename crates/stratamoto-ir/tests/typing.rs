@@ -62,7 +62,7 @@ fn setup_connection_for_one_protocol_cannot_open_a_session_for_another() {
 }
 
 #[test]
-fn a_matching_protocol_opens_a_session_of_that_protocol() {
+fn a_matching_protocol_makes_an_attempt_of_that_protocol() {
     let mut builder = ProgramBuilder::new(context());
     let (connection, setup) = connection_and_setup(&mut builder, Protocol::Mining);
 
@@ -75,7 +75,91 @@ fn a_matching_protocol_opens_a_session_of_that_protocol() {
         ))
         .unwrap();
 
-    assert_eq!(outputs[0].var, Variable::Session(Protocol::Mining));
+    assert_eq!(outputs[0].var, Variable::SetupAttempt(Protocol::Mining));
+}
+
+/// Sending a setup is an attempt; the session it may become exists only inside the block that
+/// waits for the server to agree, and not after it.
+#[test]
+fn a_session_exists_only_inside_the_success_block() {
+    let mut builder = ProgramBuilder::new(context());
+    let (connection, setup) = connection_and_setup(&mut builder, Protocol::Mining);
+    let attempt = builder
+        .append(Instruction::new(
+            Operation::SendSetupConnection {
+                protocol: Protocol::Mining,
+            },
+            vec![connection, setup],
+        ))
+        .unwrap()[0]
+        .index;
+    assert!(
+        builder
+            .get_nearest_variable(&Variable::Session(Protocol::Mining))
+            .is_none(),
+        "an attempt is not a session"
+    );
+
+    // Inside the block there is one.
+    let session = builder
+        .append(Instruction::new(
+            Operation::BeginOnSetupSuccess {
+                protocol: Protocol::Mining,
+            },
+            vec![attempt],
+        ))
+        .unwrap()[0]
+        .clone();
+    assert_eq!(session.var, Variable::Session(Protocol::Mining));
+    assert_eq!(
+        builder
+            .get_nearest_variable(&Variable::Session(Protocol::Mining))
+            .map(|v| v.index),
+        Some(session.index)
+    );
+    builder
+        .append(Instruction::new(Operation::EndOnSetupSuccess, vec![]))
+        .unwrap();
+
+    // And after it there is not.
+    assert!(
+        builder
+            .get_nearest_variable(&Variable::Session(Protocol::Mining))
+            .is_none()
+    );
+    assert!(builder.get_variable(session.index).is_none());
+    assert!(builder.finalize().is_ok());
+}
+
+/// The block for one protocol's attempt cannot be opened on another's.
+#[test]
+fn a_success_block_matches_its_attempts_protocol() {
+    let mut builder = ProgramBuilder::new(context());
+    let (connection, setup) = connection_and_setup(&mut builder, Protocol::Mining);
+    let attempt = builder
+        .append(Instruction::new(
+            Operation::SendSetupConnection {
+                protocol: Protocol::Mining,
+            },
+            vec![connection, setup],
+        ))
+        .unwrap()[0]
+        .index;
+    let error = builder
+        .append(Instruction::new(
+            Operation::BeginOnSetupSuccess {
+                protocol: Protocol::JobDeclaration,
+            },
+            vec![attempt],
+        ))
+        .unwrap_err();
+    assert_eq!(
+        error,
+        ProgramValidationError::InvalidVariableType {
+            is: Variable::SetupAttempt(Protocol::Mining),
+            expected: Variable::SetupAttempt(Protocol::JobDeclaration),
+        }
+    );
 }
 
 #[test]

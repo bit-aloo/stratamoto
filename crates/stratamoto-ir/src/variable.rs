@@ -56,7 +56,11 @@ pub enum Variable {
     Role,
     /// A transport between two roles, before any Sv2 message is exchanged.
     Connection,
-    /// A connection that has been set up for a subprotocol.
+    /// A `SetupConnection` sent for a subprotocol, before the server has said whether it
+    /// agrees. Nothing of the subprotocol can be sent on an attempt.
+    SetupAttempt(Protocol),
+    /// A connection the server agreed to set up for a subprotocol. What a subprotocol's
+    /// messages will consume, once there are any.
     Session(Protocol),
 
     Version,
@@ -70,21 +74,6 @@ pub enum Variable {
     MutSetupConnection,
     /// A finalized `SetupConnection` for a subprotocol.
     ConstSetupConnection(Protocol),
-
-    /// A mining channel the server opened. Its identifiers are not known until it answers, so
-    /// this stands for whatever it assigned rather than for a value the program chose.
-    Channel,
-    /// A channel identifier, either one the server assigned or one the program made up.
-    ChannelId,
-    /// A job identifier, either one the server announced or one the program made up.
-    JobId,
-    RequestId,
-    Hashrate,
-    Target,
-    SequenceNumber,
-    Nonce,
-    Ntime,
-    BlockVersion,
 }
 
 impl std::fmt::Display for Variable {
@@ -93,6 +82,7 @@ impl std::fmt::Display for Variable {
             Variable::Nop => write!(f, "nop"),
             Variable::Role => write!(f, "role"),
             Variable::Connection => write!(f, "connection"),
+            Variable::SetupAttempt(p) => write!(f, "setup-attempt<{p}>"),
             Variable::Session(p) => write!(f, "session<{p}>"),
             Variable::Version => write!(f, "version"),
             Variable::Flags => write!(f, "flags"),
@@ -102,16 +92,6 @@ impl std::fmt::Display for Variable {
             Variable::Duration => write!(f, "duration"),
             Variable::MutSetupConnection => write!(f, "mut-setup-connection"),
             Variable::ConstSetupConnection(p) => write!(f, "setup-connection<{p}>"),
-            Variable::Channel => write!(f, "channel"),
-            Variable::ChannelId => write!(f, "channel-id"),
-            Variable::JobId => write!(f, "job-id"),
-            Variable::RequestId => write!(f, "request-id"),
-            Variable::Hashrate => write!(f, "hashrate"),
-            Variable::Target => write!(f, "target"),
-            Variable::SequenceNumber => write!(f, "sequence-number"),
-            Variable::Nonce => write!(f, "nonce"),
-            Variable::Ntime => write!(f, "ntime"),
-            Variable::BlockVersion => write!(f, "block-version"),
         }
     }
 }

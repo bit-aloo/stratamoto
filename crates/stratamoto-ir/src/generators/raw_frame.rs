@@ -33,10 +33,17 @@ impl<R: RngExt> Generator<R> for RawFrameGenerator {
         let payload: Vec<u8> = (0..length).map(|_| rng.random()).collect();
         let bytes = one(builder.append_op(Operation::LoadBytes(payload), &[])?);
 
+        // Mostly on the extension every role speaks, sometimes on one nothing has defined,
+        // so that a role's handling of an unknown extension is reached too.
+        let extension_type = if rng.random_bool(0.25) {
+            rng.random_range(1..0x8000)
+        } else {
+            0
+        };
         builder.append_op(
             Operation::SendRawFrame {
                 message_type: rng.random(),
-                extension_type: 0,
+                extension_type,
             },
             &[&connection, &bytes],
         )?;

@@ -9,14 +9,16 @@ types are what carry the protocol's structure.
 builder can refuse an instruction whose inputs are of the wrong kind or out of scope. Two
 consequences matter:
 
-- **Relations between messages are enforced.** `Session(Mining)` is a different type from
-  `Session(TemplateDistribution)`, so a `SetupConnection` finalized for one subprotocol cannot
-  open a session for another. A share consumes a `ChannelId` and a `JobId`, and the only way to
-  get ones the server recognises is to project them out of a `Channel` with `ChannelIdOf` and
-  `JobIdOf`.
-- **Identifiers the server owns are not invented.** A `Channel` stands for whatever the server
-  assigned, bound when it answers. Writing an identifier down with `LoadJobId` is still
-  possible, and is how the rejection paths are reached deliberately.
+- **Relations between messages are enforced.** `ConstSetupConnection(Mining)` is a different
+  type from `ConstSetupConnection(TemplateDistribution)`, so a `SetupConnection` finalized for
+  one subprotocol cannot be sent as another. Sending a setup yields only a `SetupAttempt`; the
+  `Session` exists inside the `BeginOnSetupSuccess` block, which runs only once the server
+  agreed, so whatever needs a session, once there are messages that do, cannot run on a
+  connection that was never set up.
+- **What the client got wrong is classified, not hidden.** A second setup on a connection, or
+  one after a frame of the program's own choosing, is a valid program and a violation of the
+  protocol at once; the compiler notes it on the action so that an oracle relaxes what the
+  server owes in answer.
 
 ## The pieces
 
@@ -27,7 +29,7 @@ consequences matter:
 | `instruction` | an operation plus the variables it consumes |
 | `builder` | appends instructions, rejecting anything ill-typed or out of scope |
 | `compiler` | lowers a program to the actions a harness carries out |
-| `generators` | build valid fragments: `setup_connection`, `mining_channel`, `raw_frame` |
+| `generators` | build valid fragments: `setup_connection` in a valid and an adversarial form, `raw_frame` |
 | `mutators` | change a program: `input`, `operation`, `concat`, `generate` |
 | `minimizers` | shrink a failing program: `cutting`, `block`, `nopping` |
 
