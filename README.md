@@ -28,11 +28,18 @@ over real sockets. A deterministic runtime for simulated roles is being sketched
 | [`stratamoto`](crates/stratamoto) | the harness: the transport, the runner and the oracles |
 | [`stratamoto-targets`](crates/stratamoto-targets) | the real roles: sv2-apps' pool, against Bitcoin Core |
 | [`stratamoto-scenarios`](crates/stratamoto-scenarios) | one binary per scenario |
-| [`stratamoto-cli`](crates/stratamoto-cli) | generating, printing and compiling programs by hand |
+| [`stratamoto-nyx-sys`](crates/stratamoto-nyx-sys) | the Nyx agent a scenario talks to the snapshotting VM through, vendored from fuzzamoto |
+| [`stratamoto-libafl`](crates/stratamoto-libafl) | the fuzzer: LibAFL clients driving Nyx VMs, mutating programs |
+| [`stratamoto-cli`](crates/stratamoto-cli) | generating, printing and compiling programs by hand, and building a Nyx share directory |
 
 A run goes: a **generator** builds a program through the **builder**, which rejects anything
 ill-typed; the **compiler** lowers it to actions; the **runner** carries those out against a
 **deployment**; the **oracles** judge what came back.
+
+A campaign goes the way fuzzamoto's does: a scenario binary boots inside a
+[Nyx](https://nyx-fuzz.com) VM, brings the roles up and takes a snapshot; the fuzzer mutates
+programs and runs each from that snapshot, with coverage from the pool's AFL instrumentation;
+findings are filed by the oracle that made them.
 
 ## Getting started
 
@@ -55,6 +62,35 @@ target/debug/stratamoto generate 7 1 | target/debug/pool_setup_connection
 
 A scenario binary takes a serialized program on stdin and exits non-zero when an oracle finds a
 violation.
+
+### Fuzz
+
+Fuzzing needs bare metal Linux on x86_64 with KVM, and the VMware backdoor enabled in KVM:
+
+```sh
+sudo modprobe -r kvm-intel kvm       # or kvm-amd
+sudo modprobe kvm enable_vmware_backdoor=y && sudo modprobe kvm-intel
+```
+
+Then, with a pool binary instrumented by [cargo-afl](https://github.com/rust-fuzz/afl.rs) (an
+uninstrumented one runs too, with no coverage to guide the fuzzer):
+
+```sh
+export STRATAMOTO_POOL=/path/to/instrumented/pool_sv2
+cargo build --release -p stratamoto-scenarios --features nyx   # the scenario, for the VM
+cargo build --release -p stratamoto-libafl                     # the fuzzer, builds QEMU-Nyx
+cargo build --release -p stratamoto-cli
+target/release/stratamoto init --sharedir /tmp/share \
+    --scenario target/release/pool_setup_connection --pool $STRATAMOTO_POOL \
+    --template-provider /path/to/sv2-apps/integration-tests/template-provider \
+    --nyx-dir target/release
+mkdir -p /tmp/in
+target/release/stratamoto-libafl --input /tmp/in --output /tmp/out --share /tmp/share --cores 0-7
+```
+
+`STRATAMOTO_POOL` is read when the Nyx agent is built, so that the shared coverage map is the
+size the pool's instrumentation expects. Findings land under `/tmp/out/cpu_*/crashes`, filed by
+cause, as bare programs a scenario binary replays. See [`stratamoto-libafl`](crates/stratamoto-libafl).
 
 ## Running against real roles
 

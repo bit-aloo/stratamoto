@@ -1,6 +1,18 @@
 [workspace]
 resolver = "3"
 members = ["crates/*"]
+# The fuzzer builds QEMU-Nyx on first build, which takes a while and its own dependencies,
+# so it is built only when asked for: `cargo build -p stratamoto-libafl`.
+default-members = [
+    "crates/stratamoto",
+    "crates/stratamoto-cli",
+    "crates/stratamoto-dst",
+    "crates/stratamoto-ir",
+    "crates/stratamoto-macros",
+    "crates/stratamoto-nyx-sys",
+    "crates/stratamoto-scenarios",
+    "crates/stratamoto-targets",
+]
 
 [workspace.package]
 version = "0.1.0"
