@@ -57,6 +57,26 @@ jobs:
       # scenarios crate depends on the pool either way.
       - run: cargo test --workspace --exclude stratamoto-targets --locked
 
+  coverage:
+    name: coverage observer
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      # The observer reads the counters in process; the profile the runtime would write at
+      # exit is not wanted.
+      RUSTFLAGS: -C instrument-coverage
+      LLVM_PROFILE_FILE: /dev/null
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/capnp
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: coverage
+      # The fuzzer's tests, on an instrumented build: the planted-branch smoke test only exists
+      # there, and the rest proves the fuzzer runs instrumented at all.
+      - run: cargo test -p stratamoto-fuzz --locked
+
   real-roles:
     name: test against sv2-apps' pool
     runs-on: ubuntu-latest
