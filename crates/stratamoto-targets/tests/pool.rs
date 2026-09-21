@@ -78,10 +78,15 @@ fn answer(deployment: &PoolDeployment, program: &Program) -> SetupResponse {
         .clone()
 }
 
+/// The pool binary named by `STRATAMOTO_POOL`, started against the harness' Template Provider.
+fn start() -> PoolDeployment {
+    PoolDeployment::start().expect("STRATAMOTO_POOL names sv2-apps' pool binary, and it starts")
+}
+
 /// One pool for every case: starting one waits on its first template, which takes seconds.
 #[test]
 fn the_real_pool_answers_setup_connection_within_the_specification() {
-    let deployment = PoolDeployment::start().expect("the pool starts against the harness' TP");
+    let deployment = start();
 
     assert_eq!(
         answer(&deployment, &setup_connection(Protocol::Mining, 2, 2, 0)),
@@ -140,7 +145,7 @@ fn the_real_pool_answers_setup_connection_within_the_specification() {
 #[test]
 #[ignore = "documents an unfixed sv2-apps pool livelock"]
 fn a_second_frame_in_the_teardown_window_can_livelock_the_pool() {
-    let deployment = PoolDeployment::start().expect("the pool starts against the harness' TP");
+    let deployment = start();
     assert!(deployment.is_alive(), "the pool serves before the program");
 
     let mut builder = ProgramBuilder::new(context());
@@ -173,4 +178,18 @@ fn a_second_frame_in_the_teardown_window_can_livelock_the_pool() {
         }
     }
     panic!("the pool stayed alive through every attempt, so the livelock may have been fixed");
+}
+
+/// A pool that stops running is a pool that stops serving, which is what the crash oracle
+/// asks after a run.
+#[test]
+fn a_pool_that_exited_is_no_longer_alive() {
+    let mut deployment = start();
+    assert!(deployment.is_running());
+    assert!(deployment.is_alive());
+
+    deployment.kill_pool();
+
+    assert!(!deployment.is_running());
+    assert!(!deployment.is_alive());
 }

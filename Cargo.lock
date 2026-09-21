@@ -4060,11 +4060,8 @@ name = "stratamoto-targets"
 version = "0.1.0"
 dependencies = [
  "integration_tests_sv2",
- "pool_sv2",
  "stratamoto",
  "stratamoto-ir",
- "stratum-apps",
- "tokio",
  "tracing",
 ]
 

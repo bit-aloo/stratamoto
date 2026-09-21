@@ -1,21 +1,15 @@
 use std::{
+    fs::File,
     net::{SocketAddr, TcpListener, TcpStream},
+    path::{Path, PathBuf},
+    process::{Child, Command, Stdio},
     thread,
     time::{Duration, Instant},
 };
 
-use pool_sv2::{
-    PoolSv2,
-    config::{AuthorityConfig, ConnectionConfig, PoolConfig},
-};
 use stratamoto::{
     noise::NoiseTransport, roles::RoleConfig, stratum_core::common_messages_sv2::Protocol,
     transport::Deployment,
-};
-use stratum_apps::{
-    config_helpers::CoinbaseRewardScript,
-    key_utils::{Secp256k1PublicKey, Secp256k1SecretKey},
-    tp_type::TemplateProviderType,
 };
 
 use crate::{
@@ -24,6 +18,9 @@ use crate::{
         AUTHORITY_PUBLIC_KEY_ENCODED, AUTHORITY_SECRET_KEY_ENCODED, TemplateProvider,
     },
 };
+
+/// The environment variable naming the pool binary, when no path is given.
+pub const POOL_BINARY_ENV: &str = "STRATAMOTO_POOL";
 
 const COINBASE_REWARD_DESCRIPTOR: &str = "addr(tb1qa0sm0hxzj0x25rh8gw5xlzwlsfvvyz8u96w3p8)";
 const SHARES_PER_MINUTE: f32 = 120.0;
@@ -36,19 +33,15 @@ const IO_TIMEOUT: Duration = Duration::from_secs(10);
 const LIVENESS_TIMEOUT: Duration = Duration::from_secs(2);
 /// How long a connection to an already running pool is retried through transient starvation.
 const CONNECT_RETRY_BUDGET: Duration = Duration::from_secs(3);
-/// How long a stopping pool is given to acknowledge, and then how long its runtime is given to
-/// wind down. A pool wedged in a busy loop, as the livelock the pool tests record leaves it,
-/// may never do either, and a replacement is the caller's next step in any case.
-const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
 
-/// sv2-apps' pool, running in process against a Template Provider the harness plays.
+/// sv2-apps' pool, running as its own process against a Template Provider the harness plays.
 ///
-/// The pool keeps its own tokio runtime and real sockets, so unlike a simulated deployment a
-/// run is only as reproducible as the pool itself. Every connection a program opens is a fresh
-/// TCP connection with its own handshake, but the pool remembers what earlier connections did,
-/// so a caller that wants every run to start alike replaces it between runs with
-/// [`restart_pool`](Self::restart_pool). The node and sv2-tp behind it keep running through
-/// that: it is the pool that keeps channel state, not the template provider.
+/// The pool is the binary sv2-apps builds, started with a configuration written for it, the
+/// way a snapshotting fuzzer runs a target: as a separate process whose crashes are the
+/// process's own, and whose coverage instrumentation reads its environment at start. Every
+/// connection a program opens is a fresh TCP connection with its own handshake. The pool
+/// remembers what earlier connections did, so what keeps runs apart is running one program per
+/// pool, or restoring a snapshot taken before the first.
 pub struct PoolDeployment {
     // Declared before the template provider so that it is dropped first.
     pool: Pool,
@@ -56,18 +49,29 @@ pub struct PoolDeployment {
     template_provider: TemplateProvider,
 }
 
-/// The pool proper: its runtime, its handle and the address it serves on.
+/// The pool process, the address it serves on, and the directory its configuration and log
+/// live in.
 struct Pool {
-    /// Taken on drop, so that the runtime can be shut down with a bound rather than waited on.
-    runtime: Option<tokio::runtime::Runtime>,
-    pool: PoolSv2,
+    child: Child,
     address: SocketAddr,
+    dir: PathBuf,
 }
 
 impl PoolDeployment {
+    /// Bring the node and `sv2-tp` up, then the pool binary named by `STRATAMOTO_POOL`.
     pub fn start() -> Result<Self, Error> {
+        let binary = std::env::var_os(POOL_BINARY_ENV).ok_or_else(|| {
+            Error::Startup(format!(
+                "{POOL_BINARY_ENV} does not name the pool binary to run"
+            ))
+        })?;
+        Self::start_with(Path::new(&binary))
+    }
+
+    /// Bring the node and `sv2-tp` up, then the pool binary at `binary`.
+    pub fn start_with(binary: &Path) -> Result<Self, Error> {
         let template_provider = TemplateProvider::start()?;
-        let pool = Pool::start(&template_provider)?;
+        let pool = Pool::start(binary, &template_provider)?;
 
         Ok(Self {
             pool,
@@ -76,28 +80,20 @@ impl PoolDeployment {
         })
     }
 
-    /// Replace the pool with one that has served nothing, on the same node and sv2-tp.
-    ///
-    /// The old pool is stopped once the new one serves, so a caller is never left without one.
-    pub fn restart_pool(&mut self) -> Result<(), Error> {
-        self.pool = Pool::start(&self.template_provider)?;
-        Ok(())
-    }
-
-    /// Replace the pool, sv2-tp and the node, as a fresh [`start`](Self::start) would.
-    pub fn restart_all(&mut self) -> Result<(), Error> {
-        *self = Self::start()?;
-        Ok(())
-    }
-
     /// Stop the pool and leave it stopped, as a crash would. For tests of what notices.
-    pub fn stop_pool(&mut self) {
-        self.pool.stop();
+    pub fn kill_pool(&mut self) {
+        self.pool.kill();
     }
 
     #[must_use]
     pub fn address(&self) -> SocketAddr {
         self.pool.address
+    }
+
+    /// Where the pool writes its log.
+    #[must_use]
+    pub fn log_path(&self) -> PathBuf {
+        self.pool.dir.join("pool.log")
     }
 
     /// The node behind the pool, for a scenario that needs to move the chain tip.
@@ -108,84 +104,103 @@ impl PoolDeployment {
 }
 
 impl Pool {
-    fn start(template_provider: &TemplateProvider) -> Result<Self, Error> {
+    fn start(binary: &Path, template_provider: &TemplateProvider) -> Result<Self, Error> {
         // The pool insists on binding its listener itself, so reserve a port by binding to it
         // and letting go, as sv2-apps' own tests do.
         let address = TcpListener::bind("127.0.0.1:0")?.local_addr()?;
 
-        let config = PoolConfig::new(
-            ConnectionConfig::new(address, CERTIFICATE_VALIDITY_SECS, "stratamoto".to_string()),
-            TemplateProviderType::Sv2Tp {
-                address: template_provider.address().to_string(),
-                public_key: None,
-            },
-            AuthorityConfig::new(
-                Secp256k1PublicKey::try_from(AUTHORITY_PUBLIC_KEY_ENCODED.to_string())
-                    .map_err(|e| Error::Startup(format!("authority public key: {e:?}")))?,
-                Secp256k1SecretKey::try_from(AUTHORITY_SECRET_KEY_ENCODED.to_string())
-                    .map_err(|e| Error::Startup(format!("authority secret key: {e:?}")))?,
-            ),
-            CoinbaseRewardScript::from_descriptor(COINBASE_REWARD_DESCRIPTOR)
-                .map_err(|e| Error::Startup(format!("coinbase reward script: {e:?}")))?,
-            SHARES_PER_MINUTE,
-            1,
-            1,
-            vec![],
-            vec![],
-            None,
-            None,
-            None,
-        );
+        let dir = std::env::temp_dir().join(format!(
+            "stratamoto-pool-{}-{}",
+            std::process::id(),
+            address.port()
+        ));
+        std::fs::create_dir_all(&dir)?;
+        let config_path = dir.join("pool-config.toml");
+        std::fs::write(&config_path, config(address, template_provider.address()))?;
 
-        let runtime = tokio::runtime::Builder::new_multi_thread()
-            .enable_all()
-            .build()?;
-        let pool = PoolSv2::new(config);
-        let starting = pool.clone();
-        runtime.spawn(async move {
-            if let Err(e) = starting.start().await {
-                tracing::error!("pool stopped: {e:?}");
-            }
-        });
+        let log = File::create(dir.join("pool.log"))?;
+        let child = Command::new(binary)
+            .arg("--config")
+            .arg(&config_path)
+            .stdin(Stdio::null())
+            .stdout(Stdio::from(log.try_clone()?))
+            .stderr(Stdio::from(log))
+            .spawn()
+            .map_err(|e| Error::Startup(format!("could not start {}: {e}", binary.display())))?;
+
+        let mut pool = Self {
+            child,
+            address,
+            dir,
+        };
 
         // The Template Provider is already serving when it returns, so the only thing left to
         // wait on is the pool taking its first template and opening its door.
-        wait_until_accepting(address)?;
-
-        Ok(Self {
-            runtime: Some(runtime),
-            pool,
-            address,
-        })
-    }
-}
-
-impl Pool {
-    /// Stop the pool, with a bound on how long it is given.
-    fn stop(&mut self) {
-        let Some(runtime) = self.runtime.take() else {
-            return;
-        };
-        // The timeout has to be built inside the runtime, which is where its timer lives.
-        let pool = &self.pool;
-        let acknowledged = runtime
-            .block_on(async { tokio::time::timeout(SHUTDOWN_TIMEOUT, pool.shutdown()).await })
-            .is_ok();
-        if !acknowledged {
-            tracing::warn!(
-                "the pool on {} did not acknowledge shutdown within {SHUTDOWN_TIMEOUT:?}; \
-                 abandoning its runtime",
-                self.address
-            );
+        if let Err(e) = pool.wait_until_accepting() {
+            pool.kill();
+            return Err(e);
         }
-        runtime.shutdown_timeout(SHUTDOWN_TIMEOUT);
+        Ok(pool)
+    }
+
+    /// The pool binds before its first template arrives but only accepts afterwards, so a TCP
+    /// connection going through says nothing. A completed handshake does.
+    fn wait_until_accepting(&mut self) -> Result<(), Error> {
+        let deadline = Instant::now() + STARTUP_TIMEOUT;
+        loop {
+            if let Some(status) = self.child.try_wait()? {
+                return Err(Error::Startup(format!(
+                    "the pool exited with {status} before accepting a connection; its log is \
+                     {}",
+                    self.dir.join("pool.log").display()
+                )));
+            }
+            match dial(self.address, CONNECT_RETRY_BUDGET) {
+                Ok(_) => return Ok(()),
+                Err(e) if Instant::now() >= deadline => {
+                    return Err(Error::Startup(format!(
+                        "the pool never accepted a connection: {e}"
+                    )));
+                }
+                Err(_) => thread::sleep(Duration::from_millis(100)),
+            }
+        }
+    }
+
+    /// Whether the process is still running.
+    fn is_running(&mut self) -> bool {
+        matches!(self.child.try_wait(), Ok(None))
+    }
+
+    fn kill(&mut self) {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
     }
 }
 
 impl Drop for Pool {
     fn drop(&mut self) {
-        self.stop();
+        self.kill();
+        let _ = std::fs::remove_dir_all(&self.dir);
     }
+}
+
+/// The pool's configuration file, in the shape its binary reads.
+fn config(listen: SocketAddr, template_provider: SocketAddr) -> String {
+    format!(
+        "listen_address = \"{listen}\"\n\
+         authority_public_key = \"{AUTHORITY_PUBLIC_KEY_ENCODED}\"\n\
+         authority_secret_key = \"{AUTHORITY_SECRET_KEY_ENCODED}\"\n\
+         cert_validity_sec = {CERTIFICATE_VALIDITY_SECS}\n\
+         coinbase_reward_script = \"{COINBASE_REWARD_DESCRIPTOR}\"\n\
+         pool_signature = \"stratamoto\"\n\
+         shares_per_minute = {SHARES_PER_MINUTE:?}\n\
+         share_batch_size = 1\n\
+         server_id = 1\n\
+         \n\
+         [template_provider_type.Sv2Tp]\n\
+         address = \"{template_provider}\"\n"
+    )
 }
 
 impl Deployment for PoolDeployment {
@@ -195,11 +210,11 @@ impl Deployment for PoolDeployment {
         if role >= self.roles.len() {
             return None;
         }
-        // The pool runs on a shared runtime, so under connection churn a fresh accept can be
-        // momentarily starved and refuse the socket. That is a transient of talking to a real
-        // role, so it is retried briefly. The long budget belongs to startup alone: a pool
-        // that is serving accepts at once, and waiting 30 seconds on one that has stopped
-        // would cost that much on every connection of every later run.
+        // Under connection churn a fresh accept can be momentarily starved and refuse the
+        // socket. That is a transient of talking to a real role, so it is retried briefly. The
+        // long budget belongs to startup alone: a pool that is serving accepts at once, and
+        // waiting 30 seconds on one that has stopped would cost that much on every connection
+        // of every later run.
         dial(self.pool.address, CONNECT_RETRY_BUDGET)
             .map_err(|e| tracing::debug!("could not connect to the pool: {e}"))
             .ok()
@@ -218,9 +233,18 @@ impl Deployment for PoolDeployment {
     }
 
     fn is_alive(&self) -> bool {
-        // A short budget: a live pool answers a handshake at once, and a pool that shut itself
-        // down never will, so there is nothing to wait out.
+        // The process's own status is not available through a shared reference, so this asks
+        // the pool what a downstream would: whether a fresh handshake completes. A short
+        // budget: a live pool answers at once, and a pool that exited never will, so there is
+        // nothing to wait out.
         dial(self.pool.address, LIVENESS_TIMEOUT).is_ok()
+    }
+}
+
+impl PoolDeployment {
+    /// Whether the pool process is still running, regardless of whether it is serving.
+    pub fn is_running(&mut self) -> bool {
+        self.pool.is_running()
     }
 }
 
@@ -237,12 +261,4 @@ fn dial(address: SocketAddr, budget: Duration) -> Result<NoiseTransport, stratam
             Err(e) => return Err(e),
         }
     }
-}
-
-/// The pool binds before its first template arrives but only accepts afterwards, so a TCP
-/// connection going through says nothing. A completed handshake does.
-fn wait_until_accepting(address: SocketAddr) -> Result<(), Error> {
-    dial(address, STARTUP_TIMEOUT)
-        .map(|_| ())
-        .map_err(|e| Error::Startup(format!("the pool never accepted a connection: {e}")))
 }

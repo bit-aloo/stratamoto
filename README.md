@@ -58,9 +58,19 @@ violation.
 
 ## Running against real roles
 
-`stratamoto-targets` starts sv2-apps' pool in process and feeds it from a real Bitcoin Core node
-with `sv2-tp` in front, reusing sv2-apps' own launchers. Templates therefore come from a node,
-not from us, and the pool is the real thing when it is asked to set a connection up.
+`stratamoto-targets` starts sv2-apps' pool binary as its own process and feeds it from a real
+Bitcoin Core node with `sv2-tp` in front, reusing sv2-apps' own launchers. Templates therefore
+come from a node, not from us, and the pool is the real thing when it is asked to set a
+connection up.
+
+The pool binary is built from sv2-apps at the revision this workspace pins, and named by
+`STRATAMOTO_POOL`:
+
+```sh
+cargo install --git https://github.com/stratum-mining/sv2-apps.git \
+    --rev ab8f30f1784ea20c2de1b2726c47e7eea10f4556 pool_sv2 --root ./sv2
+export STRATAMOTO_POOL=$PWD/sv2/bin/pool_sv2
+```
 
 Those launchers look for their binaries in a `template-provider` directory beside the working
 directory and download them when they are missing. If you already have a copy, point at it and
@@ -94,5 +104,6 @@ the test fails, and that is the signal to update the record.
 | variable | what it does |
 | --- | --- |
 | `STRATAMOTO_INPUT` | read a scenario's program or artifact from a file instead of stdin |
+| `STRATAMOTO_POOL` | the pool binary the pool target runs |
 | `STRATAMOTO_TEMPLATE_PROVIDER_CACHE` | where Bitcoin Core and `sv2-tp` already live |
 | `RUST_LOG` | filters logging from the harness and the real roles alike, through `tracing` |

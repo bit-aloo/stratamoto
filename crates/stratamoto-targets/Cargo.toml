@@ -7,10 +7,7 @@ readme = "README.md"
 [dependencies]
 stratamoto.workspace = true
 stratamoto-ir.workspace = true
-pool_sv2.workspace = true
 integration_tests_sv2.workspace = true
-stratum-apps = { workspace = true, features = ["config"] }
-tokio = { workspace = true, features = ["time"] }
 tracing.workspace = true
 
 [dev-dependencies]

@@ -74,6 +74,18 @@ jobs:
           path: crates/stratamoto-targets/template-provider
           key: template-provider-${{ runner.os }}-v1
 
+      # The pool under test is sv2-apps' own binary, at the revision the workspace pins.
+      - name: Cache the pool binary
+        id: pool
+        uses: actions/cache@v4
+        with:
+          path: sv2
+          key: pool-ab8f30f1784ea20c2de1b2726c47e7eea10f4556-v1
+      - if: steps.pool.outputs.cache-hit != 'true'
+        run: >
+          cargo install --git https://github.com/stratum-mining/sv2-apps.git
+          --rev ab8f30f1784ea20c2de1b2726c47e7eea10f4556 pool_sv2 --root sv2
+
       # The ignored test asserts an unfixed upstream livelock is present and is a race, so it
       # is deliberately not run here.
-      - run: cargo test -p stratamoto-targets --locked
+      - run: STRATAMOTO_POOL=$PWD/sv2/bin/pool_sv2 cargo test -p stratamoto-targets --locked
