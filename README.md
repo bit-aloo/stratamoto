@@ -49,7 +49,7 @@ cargo test
 ```
 
 The programs and the harness need nothing but a Rust toolchain (built with 1.98, edition 2024).
-Anything touching a real role additionally needs Bitcoin Core and `sv2-tp`; see
+Anything touching a real role additionally needs Bitcoin Core; see
 [running against real roles](#running-against-real-roles).
 
 ### Run one scenario
@@ -95,9 +95,9 @@ cause, as bare programs a scenario binary replays. See [`stratamoto-libafl`](cra
 ## Running against real roles
 
 `stratamoto-targets` starts sv2-apps' pool binary as its own process and feeds it from a real
-Bitcoin Core node with `sv2-tp` in front, reusing sv2-apps' own launchers. Templates therefore
-come from a node, not from us, and the pool is the real thing when it is asked to set a
-connection up.
+Bitcoin Core node, started with sv2-apps' own launcher. The pool carries `bitcoin-core-sv2` and
+talks to the node over its IPC socket, with nothing in between. Templates therefore come from a
+node, not from us, and the pool is the real thing when it is asked to set a connection up.
 
 The pool binary is built from sv2-apps at the revision this workspace pins, and named by
 `STRATAMOTO_POOL`:
@@ -108,8 +108,8 @@ cargo install --git https://github.com/stratum-mining/sv2-apps.git \
 export STRATAMOTO_POOL=$PWD/sv2/bin/pool_sv2
 ```
 
-Those launchers look for their binaries in a `template-provider` directory beside the working
-directory and download them when they are missing. If you already have a copy, point at it and
+That launcher looks for Bitcoin Core in a `template-provider` directory beside the working
+directory and downloads it when it is missing. If you already have a copy, point at it and
 nothing is downloaded:
 
 ```sh
@@ -142,5 +142,5 @@ the test fails, and that is the signal to update the record.
 | `STRATAMOTO_INPUT` | read a scenario's program from a file instead of stdin |
 | `STRATAMOTO_POOL` | the pool binary the pool target runs |
 | `STRATAMOTO_DUMP_IR_CONTEXT` | where a locally run scenario writes the program context it dumps for the fuzzer |
-| `STRATAMOTO_TEMPLATE_PROVIDER_CACHE` | where Bitcoin Core and `sv2-tp` already live |
+| `STRATAMOTO_TEMPLATE_PROVIDER_CACHE` | where Bitcoin Core already lives |
 | `RUST_LOG` | filters logging from the harness and the real roles alike, through `tracing` |

@@ -4,10 +4,11 @@ The real roles: sv2-apps' pool, running as its own process against a real Bitcoi
 
 ## What it starts
 
-`TemplateProvider` launches Bitcoin Core with IPC enabled and the `sv2-tp` binary in front of it,
-reusing sv2-apps' own launchers rather than reimplementing them. `PoolDeployment` then starts
-the pool binary sv2-apps builds, with a configuration written for it that points at that
-provider, and implements the `Deployment` trait so the runner and the oracles apply to it
+`Node` launches Bitcoin Core with IPC enabled, reusing sv2-apps' own launcher rather than
+reimplementing it. `PoolDeployment` then starts the pool binary sv2-apps builds, with a
+configuration written for it that points at the node's data directory: the pool carries
+`bitcoin-core-sv2` and takes its templates over the node's IPC socket, with no `sv2-tp` in
+between. It implements the `Deployment` trait so the runner and the oracles apply to it
 unchanged.
 
 The pool is a separate process rather than a library linked in, the way a snapshotting fuzzer
@@ -20,16 +21,16 @@ is asked to set a connection up.
 ```rust
 use stratamoto_targets::pool::PoolDeployment;
 
-let deployment = PoolDeployment::start()?;                    // node, sv2-tp, then the pool
+let deployment = PoolDeployment::start()?;                    // the node, then the pool
 let deployment = PoolDeployment::start_with(Path::new("pool_sv2"))?; // a given binary
-deployment.template_provider().generate_blocks(1);             // move the chain
+deployment.node().generate_blocks(1);                          // move the chain
 ```
 
 `start` runs the binary `STRATAMOTO_POOL` names. The pool's log is written next to its
 configuration, at `log_path()`.
 
 Starting one waits until the pool has taken its first template and is accepting connections:
-about three seconds for the node, `sv2-tp` and the pool together. The pool remembers what
+about three seconds for the node and the pool together. The pool remembers what
 earlier connections did, so a run against a reused pool can see what the runs before it left
 behind; a process that wants every program to start alike runs one program per pool.
 
@@ -43,9 +44,9 @@ cargo install --git https://github.com/stratum-mining/sv2-apps.git \
 export STRATAMOTO_POOL=$PWD/sv2/bin/pool_sv2
 ```
 
-Bitcoin Core and `sv2-tp` binaries. sv2-apps' launchers resolve them from a `template-provider`
-directory beside the working directory and download them when missing, which works but is slow
-the first time. To reuse a copy you already have:
+Bitcoin Core, at a version whose IPC interface the pool speaks. sv2-apps' launcher resolves it
+from a `template-provider` directory beside the working directory and downloads it when
+missing, which works but is slow the first time. To reuse a copy you already have:
 
 ```sh
 export STRATAMOTO_TEMPLATE_PROVIDER_CACHE=/path/to/sv2-apps/integration-tests/template-provider

@@ -1,7 +1,7 @@
-use std::{net::SocketAddr, path::PathBuf};
+use std::path::{Path, PathBuf};
 
 use integration_tests_sv2::{
-    template_provider::{DifficultyLevel, TemplateProvider as Sv2TemplateProvider},
+    template_provider::{BITCOIN_CORE_LATEST, BitcoinCore, DifficultyLevel},
     utils::get_available_address,
 };
 
@@ -13,16 +13,17 @@ pub(crate) const AUTHORITY_PUBLIC_KEY_ENCODED: &str =
 pub(crate) const AUTHORITY_SECRET_KEY_ENCODED: &str =
     "mkDLTBBRxdBv998612qipDYoTK3YUrqLe8uWw7gu3iXbSrn2n";
 
-/// How often sv2-tp offers a new template, in seconds.
-const TEMPLATE_INTERVAL_SECS: u32 = 1;
+/// The major version of the Core release `BITCOIN_CORE_LATEST` stands for, which is how the
+/// pool's configuration names the IPC schema to speak.
+pub(crate) const IPC_VERSION: u8 = 31;
 
 /// Blocks mined before anything else, so the node leaves initial block download and has
 /// coinbases behind it. sv2-apps mines sixteen rather than one to work around a Core issue,
-/// and `TemplateProvider::start` does not do it: their `start_template_provider` does.
+/// and `BitcoinCore::start` does not do it: their `start_bitcoin_core` does.
 const STARTUP_BLOCKS: usize = 16;
 
-/// A real Template Provider: Bitcoin Core with IPC enabled, and the sv2-tp binary in front of
-/// it serving the Template Distribution protocol.
+/// A real Bitcoin Core node with IPC enabled, which the pool takes its templates from directly:
+/// the pool carries `bitcoin-core-sv2`, so nothing stands between the two.
 ///
 /// Templates come from a node rather than from us. A synthesized template only has to satisfy
 /// the decoder, so a role could accept one no real node would ever produce, and nothing that
@@ -31,29 +32,29 @@ const STARTUP_BLOCKS: usize = 16;
 ///
 /// The node runs in regtest, where the target is low enough that a submitted share is also a
 /// block, which is what makes share submission observable at all.
-pub struct TemplateProvider {
-    inner: Sv2TemplateProvider,
-    address: SocketAddr,
+pub struct Node {
+    inner: BitcoinCore,
 }
 
-impl TemplateProvider {
+impl Node {
     pub fn start() -> Result<Self, Error> {
         use_existing_binaries()?;
 
-        let address = get_available_address();
-        let inner = Sv2TemplateProvider::start(
-            address.port(),
-            TEMPLATE_INTERVAL_SECS,
+        // The port only names the node's wallet and data directory; nothing listens on it.
+        let inner = BitcoinCore::start(
+            get_available_address().port(),
             DifficultyLevel::Low,
+            BITCOIN_CORE_LATEST,
         );
         inner.generate_blocks(STARTUP_BLOCKS);
 
-        Ok(Self { inner, address })
+        Ok(Self { inner })
     }
 
+    /// The node's data directory, under which its IPC socket is: what the pool is pointed at.
     #[must_use]
-    pub fn address(&self) -> SocketAddr {
-        self.address
+    pub fn data_dir(&self) -> &Path {
+        self.inner.data_dir()
     }
 
     /// Mine `n` blocks, which is how a test moves the chain tip and draws a new template.
@@ -76,9 +77,9 @@ impl TemplateProvider {
     }
 }
 
-/// sv2-apps resolves its Bitcoin Core and sv2-tp binaries from `template-provider` next to the
-/// working directory, and downloads them there when they are missing. Point that at a copy
-/// that already has them, so a run does not fetch Bitcoin Core again.
+/// sv2-apps resolves its Bitcoin Core binaries from `template-provider` next to the working
+/// directory, and downloads them there when they are missing. Point that at a copy that
+/// already has them, so a run does not fetch Bitcoin Core again.
 fn use_existing_binaries() -> Result<(), Error> {
     let local = std::env::current_dir()?.join("template-provider");
     if local.exists() {

@@ -25,7 +25,7 @@ pub struct PoolSetupConnectionScenario {
 }
 
 impl PoolSetupConnectionScenario {
-    /// Bring the pool up, with the node and `sv2-tp` behind it, from the binary
+    /// Bring the pool up, with the node behind it, from the binary
     /// `STRATAMOTO_POOL` names.
     pub fn start() -> Result<Self> {
         let deployment = PoolDeployment::start().map_err(|e| Error::Target(e.to_string()))?;

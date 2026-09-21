@@ -78,7 +78,7 @@ fn answer(deployment: &PoolDeployment, program: &Program) -> SetupResponse {
         .clone()
 }
 
-/// The pool binary named by `STRATAMOTO_POOL`, started against the harness' Template Provider.
+/// The pool binary named by `STRATAMOTO_POOL`, started against a Bitcoin Core node.
 fn start() -> PoolDeployment {
     PoolDeployment::start().expect("STRATAMOTO_POOL names sv2-apps' pool binary, and it starts")
 }

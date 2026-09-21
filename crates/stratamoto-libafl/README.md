@@ -7,9 +7,9 @@ mutators, generators and minimizers of `stratamoto-ir`. A port of
 
 ## How a campaign runs
 
-1. Inside the VM, the scenario binary (built with `--features nyx`) brings the node, `sv2-tp`
-   and the pool up, dumps the program context, and asks the Nyx agent for its input. That
-   takes the snapshot.
+1. Inside the VM, the scenario binary (built with `--features nyx`) brings the node and the
+   pool up, dumps the program context, and asks the Nyx agent for its input. That takes the
+   snapshot.
 2. Each client mutates a program from its corpus, hands it to the VM, and the scenario
    compiles and runs it against the pool from the snapshot, then reports: a pass, a skip, or
    a finding with the name of the oracle that made it. The VM is restored.

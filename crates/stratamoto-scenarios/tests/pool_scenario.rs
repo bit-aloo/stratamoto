@@ -1,6 +1,6 @@
 //! The scenario binary, run the way a fuzzer's share directory or a script runs it.
 //!
-//! Needs the pool binary `STRATAMOTO_POOL` names, and Bitcoin Core with `sv2-tp`.
+//! Needs the pool binary `STRATAMOTO_POOL` names, and Bitcoin Core.
 
 use std::{
     io::Write,

@@ -1,5 +1,5 @@
+pub mod node;
 pub mod pool;
-pub mod template_provider;
 
 use std::fmt;
 

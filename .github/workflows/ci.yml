@@ -84,9 +84,9 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
 
-      # sv2-apps' launchers fetch Bitcoin Core and sv2-tp into this directory when they are
-      # missing, which is most of the job's time on a cold cache.
-      - name: Cache Bitcoin Core and sv2-tp
+      # sv2-apps' launcher fetches Bitcoin Core into this directory when it is missing, which
+      # is most of the job's time on a cold cache.
+      - name: Cache Bitcoin Core
         uses: actions/cache@v4
         with:
           path: crates/stratamoto-targets/template-provider

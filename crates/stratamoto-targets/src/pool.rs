@@ -14,9 +14,7 @@ use stratamoto::{
 
 use crate::{
     Error,
-    template_provider::{
-        AUTHORITY_PUBLIC_KEY_ENCODED, AUTHORITY_SECRET_KEY_ENCODED, TemplateProvider,
-    },
+    node::{AUTHORITY_PUBLIC_KEY_ENCODED, AUTHORITY_SECRET_KEY_ENCODED, IPC_VERSION, Node},
 };
 
 /// The environment variable naming the pool binary, when no path is given.
@@ -25,6 +23,8 @@ pub const POOL_BINARY_ENV: &str = "STRATAMOTO_POOL";
 const COINBASE_REWARD_DESCRIPTOR: &str = "addr(tb1qa0sm0hxzj0x25rh8gw5xlzwlsfvvyz8u96w3p8)";
 const SHARES_PER_MINUTE: f32 = 120.0;
 const CERTIFICATE_VALIDITY_SECS: u64 = 3600;
+/// The least time between two templates drawn by rising fees, in seconds.
+const TEMPLATE_INTERVAL_SECS: u8 = 1;
 
 /// The pool looks for its first template once a second, so readiness takes at least that long.
 const STARTUP_TIMEOUT: Duration = Duration::from_secs(30);
@@ -34,7 +34,7 @@ const LIVENESS_TIMEOUT: Duration = Duration::from_secs(2);
 /// How long a connection to an already running pool is retried through transient starvation.
 const CONNECT_RETRY_BUDGET: Duration = Duration::from_secs(3);
 
-/// sv2-apps' pool, running as its own process against a Template Provider the harness plays.
+/// sv2-apps' pool, running as its own process against a Bitcoin Core node it reaches over IPC.
 ///
 /// The pool is the binary sv2-apps builds, started with a configuration written for it, the
 /// way a snapshotting fuzzer runs a target: as a separate process whose crashes are the
@@ -43,10 +43,10 @@ const CONNECT_RETRY_BUDGET: Duration = Duration::from_secs(3);
 /// remembers what earlier connections did, so what keeps runs apart is running one program per
 /// pool, or restoring a snapshot taken before the first.
 pub struct PoolDeployment {
-    // Declared before the template provider so that it is dropped first.
+    // Declared before the node so that it is dropped first.
     pool: Pool,
     roles: Vec<RoleConfig>,
-    template_provider: TemplateProvider,
+    node: Node,
 }
 
 /// The pool process, the address it serves on, and the directory its configuration and log
@@ -58,7 +58,7 @@ struct Pool {
 }
 
 impl PoolDeployment {
-    /// Bring the node and `sv2-tp` up, then the pool binary named by `STRATAMOTO_POOL`.
+    /// Bring the node up, then the pool binary named by `STRATAMOTO_POOL`.
     pub fn start() -> Result<Self, Error> {
         let binary = std::env::var_os(POOL_BINARY_ENV).ok_or_else(|| {
             Error::Startup(format!(
@@ -68,15 +68,15 @@ impl PoolDeployment {
         Self::start_with(Path::new(&binary))
     }
 
-    /// Bring the node and `sv2-tp` up, then the pool binary at `binary`.
+    /// Bring the node up, then the pool binary at `binary`.
     pub fn start_with(binary: &Path) -> Result<Self, Error> {
-        let template_provider = TemplateProvider::start()?;
-        let pool = Pool::start(binary, &template_provider)?;
+        let node = Node::start()?;
+        let pool = Pool::start(binary, &node)?;
 
         Ok(Self {
             pool,
             roles: vec![RoleConfig::new(Protocol::MiningProtocol)],
-            template_provider,
+            node,
         })
     }
 
@@ -98,13 +98,13 @@ impl PoolDeployment {
 
     /// The node behind the pool, for a scenario that needs to move the chain tip.
     #[must_use]
-    pub fn template_provider(&self) -> &TemplateProvider {
-        &self.template_provider
+    pub fn node(&self) -> &Node {
+        &self.node
     }
 }
 
 impl Pool {
-    fn start(binary: &Path, template_provider: &TemplateProvider) -> Result<Self, Error> {
+    fn start(binary: &Path, node: &Node) -> Result<Self, Error> {
         // The pool insists on binding its listener itself, so reserve a port by binding to it
         // and letting go, as sv2-apps' own tests do.
         let address = TcpListener::bind("127.0.0.1:0")?.local_addr()?;
@@ -116,7 +116,7 @@ impl Pool {
         ));
         std::fs::create_dir_all(&dir)?;
         let config_path = dir.join("pool-config.toml");
-        std::fs::write(&config_path, config(address, template_provider.address()))?;
+        std::fs::write(&config_path, config(address, node.data_dir()))?;
 
         let log = File::create(dir.join("pool.log"))?;
         let child = Command::new(binary)
@@ -134,7 +134,7 @@ impl Pool {
             dir,
         };
 
-        // The Template Provider is already serving when it returns, so the only thing left to
+        // The node's IPC socket is already there when it returns, so the only thing left to
         // wait on is the pool taking its first template and opening its door.
         if let Err(e) = pool.wait_until_accepting() {
             pool.kill();
@@ -186,7 +186,7 @@ impl Drop for Pool {
 }
 
 /// The pool's configuration file, in the shape its binary reads.
-fn config(listen: SocketAddr, template_provider: SocketAddr) -> String {
+fn config(listen: SocketAddr, node_data_dir: &Path) -> String {
     format!(
         "listen_address = \"{listen}\"\n\
          authority_public_key = \"{AUTHORITY_PUBLIC_KEY_ENCODED}\"\n\
@@ -198,8 +198,13 @@ fn config(listen: SocketAddr, template_provider: SocketAddr) -> String {
          share_batch_size = 1\n\
          server_id = 1\n\
          \n\
-         [template_provider_type.Sv2Tp]\n\
-         address = \"{template_provider}\"\n"
+         [template_provider_type.BitcoinCoreIpc]\n\
+         version = {IPC_VERSION}\n\
+         network = \"regtest\"\n\
+         data_dir = \"{}\"\n\
+         fee_threshold = 0\n\
+         min_interval = {TEMPLATE_INTERVAL_SECS}\n",
+        node_data_dir.display()
     )
 }
 
