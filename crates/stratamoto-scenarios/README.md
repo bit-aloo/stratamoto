@@ -1,7 +1,7 @@
 # stratamoto-scenarios
 
 One binary per scenario. A scenario pairs a deployment with the oracles that judge it, and reads
-a program on stdin: either a bare one as the CLI writes it, or an artifact the fuzzer saved.
+a program on stdin, as the CLI writes one and the fuzzer keeps them.
 
 | binary | what it runs against |
 | --- | --- |
@@ -9,7 +9,7 @@ a program on stdin: either a bare one as the CLI writes it, or an artifact the f
 
 ```sh
 stratamoto generate 7 1 | pool_setup_connection ./pool_sv2
-STRATAMOTO_INPUT=failures/failure-0.stratamoto pool_setup_connection   # STRATAMOTO_POOL names the pool
+STRATAMOTO_INPUT=/tmp/out/cpu_000/crashes/setupconnection-0 pool_setup_connection   # STRATAMOTO_POOL names the pool
 ```
 
 The pool binary is the first argument, as a Nyx share directory passes it, or `STRATAMOTO_POOL`

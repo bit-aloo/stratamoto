@@ -6,7 +6,7 @@ Building, reading and lowering programs by hand. Installed as the `stratamoto` b
 
 ```sh
 stratamoto generate [seed] [roles]   # write a program for a seed to stdout
-stratamoto print                     # pretty print a program, or an artifact, from stdin
+stratamoto print                     # pretty print a program from stdin
 stratamoto compile                   # show the actions a program lowers to
 stratamoto init <options>            # create a Nyx share directory for a scenario
 ```
@@ -18,12 +18,8 @@ compose:
 stratamoto generate 7 3 | stratamoto print
 stratamoto generate 7 3 | stratamoto compile
 stratamoto generate 7 1 | pool_setup_connection
-stratamoto print < failures/failure-0.stratamoto
+stratamoto print < /tmp/out/cpu_000/crashes/setupconnection-0
 ```
-
-`print` and `compile` also take an artifact the fuzzer saved. For an artifact, `print` shows the
-envelope first: the scenario, the verdict, the campaign seed and iteration, what the harness was
-built against, and after the program the corpus entry it was mutated from.
 
 `roles` is how many roles the program may address and defaults to 3. It has to match the
 deployment a scenario runs against: the pool deployment has one role, so generate with `1` when

@@ -2,7 +2,7 @@ use std::{hash::Hash, path::Path};
 
 use libafl::inputs::{HasTargetBytes, Input};
 use libafl_bolts::{HasLen, ownedref::OwnedSlice};
-use stratamoto_ir::{Program, artifact::read_program};
+use stratamoto_ir::Program;
 
 /// The largest input handed to the VM. Programs are small; one this size is a runaway.
 const MAX_INPUT_BYTES: usize = 1024 * 1024;
@@ -31,10 +31,10 @@ impl IrInput {
         &mut self.ir
     }
 
-    /// Read a program, or an artifact holding one, from `path`.
+    /// Read a program from `path`.
     pub fn unparse(path: &Path) -> Result<Self, String> {
         let bytes = std::fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
-        let ir = read_program(&bytes).map_err(|e| format!("{}: {e}", path.display()))?;
+        let ir = postcard::from_bytes(&bytes).map_err(|e| format!("{}: {e}", path.display()))?;
         Ok(Self { ir })
     }
 }

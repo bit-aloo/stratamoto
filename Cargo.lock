@@ -5345,7 +5345,6 @@ dependencies = [
 name = "stratamoto-ir"
 version = "0.1.0"
 dependencies = [
- "postcard",
  "rand 0.10.1",
  "serde",
  "stratum-apps",

@@ -7,7 +7,6 @@ use stratamoto::{
 };
 use stratamoto_ir::{
     Program,
-    artifact::read_program,
     compiler::{CompiledProgram, Compiler},
 };
 
@@ -47,9 +46,10 @@ impl TestCase {
 }
 
 impl ScenarioInput for TestCase {
-    /// A saved artifact or a bare program, as the CLI writes one.
+    /// A program as the CLI writes one and the fuzzer keeps them.
     fn decode(bytes: &[u8]) -> Result<Self> {
-        let program = read_program(bytes).map_err(|e| Error::Input(e.to_string()))?;
+        let program: Program =
+            postcard::from_bytes(bytes).map_err(|e| Error::Input(e.to_string()))?;
         Self::from_program(&program)
     }
 }

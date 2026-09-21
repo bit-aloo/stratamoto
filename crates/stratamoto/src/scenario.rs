@@ -65,7 +65,7 @@ macro_rules! stratamoto_main {
             let bytes = runner.get_fuzz_input();
 
             // Input that is not a test case is skipped rather than failed; the reason is
-            // logged so that an artifact this build cannot read says why.
+            // logged so that a file this build cannot read says why.
             let input = match <$input as ScenarioInput>::decode(&bytes) {
                 Ok(input) => input,
                 Err(e) => {
