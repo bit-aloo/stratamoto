@@ -3,12 +3,17 @@
 A deterministic simulator and fuzzer for [Stratum V2](https://github.com/stratum-mining/sv2-spec)
 roles, built along the lines of [fuzzamoto](https://github.com/oss-garage/fuzzamoto).
 
+How far each protocol message is taken is tracked in [`FEATURES.md`](FEATURES.md).
+
 Test cases are not byte strings. They are programs in a typed intermediate
-representation, where the types record how one message depends on another: a share may only
-name a `job_id` that some channel the server opened actually announced, and a mining message
-may only be sent on a connection that was set up for mining. A mutator can rewrite anything it
-likes and still not fabricate a relationship the protocol does not allow, which is what
+representation, where the types record how one message depends on another: a `SetupConnection`
+finalized for one subprotocol cannot be sent as another, and what needs a session can only run
+inside the block that runs once the server agreed to the setup. A mutator can rewrite anything
+it likes and still not fabricate a relationship the protocol does not allow, which is what
 separates this from feeding random bytes at a decoder.
+
+The scope today is the `SetupConnection` message flow: every component handles that one flow
+completely before the next message is added.
 
 The same program runs against either simulated roles on a deterministic runtime, or against the
 real roles from [sv2-apps](https://github.com/stratum-mining/sv2-apps) over real sockets, and
@@ -46,11 +51,12 @@ touching a real role additionally needs Bitcoin Core and `sv2-tp`; see
 ```sh
 cargo build
 target/debug/stratamoto generate 7 3 | target/debug/stratamoto print          # read it
-target/debug/stratamoto generate 7 3 | STRATAMOTO_SEED=7 target/debug/setup_connection
+target/debug/stratamoto generate 7 3 | target/debug/setup_connection
 ```
 
 A scenario binary takes a serialized program on stdin and exits non-zero when an oracle finds a
-violation, so a failing program can be replayed exactly.
+violation. The program carries the seed its simulated deployment is built from, so the same
+bytes replay the same run.
 
 ### Fuzz
 
@@ -60,14 +66,23 @@ STRATAMOTO_TARGET=pool target/debug/stratamoto-fuzz 60 1 ./failures   # sv2-apps
 ```
 
 Arguments are `[iterations] [seed] [failure directory]`. Failures are reduced before they are
-reported and, when a directory is given, written there as programs a scenario binary can replay.
+reported and, when a directory is given, written there as artifacts: the program, the scenario
+and verdict, the campaign seed and the corpus entry it was mutated from, and the revisions of
+the roles and libraries it was found against. A scenario binary replays an artifact as it is,
+and `stratamoto print` shows one.
+
+Against the pool, the pool is replaced before every run, so no run sees what earlier ones left
+behind and a run that stops the pool costs one restart rather than the campaign.
+
+The roles are compiled into the fuzzer, so the compiler's own coverage instrumentation reaches
+them: built with `RUSTFLAGS="-C instrument-coverage"`, the fuzzer also keeps any program that
+reached a code region no earlier one had. See [the fuzzer's README](crates/stratamoto-fuzz/README.md#coverage-from-inside-the-target).
 
 ## Running against real roles
 
 `stratamoto-targets` starts sv2-apps' pool in process and feeds it from a real Bitcoin Core node
 with `sv2-tp` in front, reusing sv2-apps' own launchers. Templates therefore come from a node,
-not from us: a synthesized template only has to satisfy a decoder, so nothing built on one —
-a job, or a share against that job — would mean much.
+not from us, and the pool is the real thing when it is asked to set a connection up.
 
 Those launchers look for their binaries in a `template-provider` directory beside the working
 directory and download them when they are missing. If you already have a copy, point at it and
@@ -79,8 +94,7 @@ export STRATAMOTO_TEMPLATE_PROVIDER_CACHE=/path/to/sv2-apps/integration-tests/te
 
 Without it, a checkout of sv2-apps beside this one is found automatically.
 
-The node runs in regtest, where the target is low enough that a submitted share is also a block,
-which is what makes share submission observable at all.
+The node runs in regtest.
 
 ## A known upstream finding
 
@@ -101,8 +115,10 @@ the test fails, and that is the signal to update the record.
 
 | variable | what it does |
 | --- | --- |
-| `STRATAMOTO_SEED` | seed a scenario's simulator (default 0) |
-| `STRATAMOTO_INPUT` | read a scenario's program from a file instead of stdin |
+| `STRATAMOTO_INPUT` | read a scenario's program or artifact from a file instead of stdin |
 | `STRATAMOTO_TARGET` | `simulated` (default) or `pool` |
+| `STRATAMOTO_RESET` | what the pool target replaces before each run: `pool` (default), `all` for the node and `sv2-tp` too, or `none` |
+| `STRATAMOTO_CORPUS` | a directory the fuzzer keeps its corpus in, and starts from next time |
 | `STRATAMOTO_TEMPLATE_PROVIDER_CACHE` | where Bitcoin Core and `sv2-tp` already live |
 | `RUST_LOG` | harness logging; the real roles log through `tracing` |
+| `LLVM_PROFILE_FILE` | where an instrumented build writes its profile at exit; `/dev/null` when only the fuzzer's observer needs the counters |
