@@ -36,24 +36,79 @@ const IO_TIMEOUT: Duration = Duration::from_secs(10);
 const LIVENESS_TIMEOUT: Duration = Duration::from_secs(2);
 /// How long a connection to an already running pool is retried through transient starvation.
 const CONNECT_RETRY_BUDGET: Duration = Duration::from_secs(3);
+/// How long a stopping pool is given to acknowledge, and then how long its runtime is given to
+/// wind down. A pool wedged in a busy loop, as the livelock the pool tests record leaves it,
+/// may never do either, and a replacement is the caller's next step in any case.
+const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// sv2-apps' pool, running in process against a Template Provider the harness plays.
 ///
 /// The pool keeps its own tokio runtime and real sockets, so unlike a simulated deployment a
-/// run is only as reproducible as the pool itself. It is started once and reused: every
-/// connection a program opens is a fresh TCP connection with its own handshake.
+/// run is only as reproducible as the pool itself. Every connection a program opens is a fresh
+/// TCP connection with its own handshake, but the pool remembers what earlier connections did,
+/// so a caller that wants every run to start alike replaces it between runs with
+/// [`restart_pool`](Self::restart_pool). The node and sv2-tp behind it keep running through
+/// that: it is the pool that keeps channel state, not the template provider.
 pub struct PoolDeployment {
-    runtime: tokio::runtime::Runtime,
-    pool: PoolSv2,
-    address: SocketAddr,
+    // Declared before the template provider so that it is dropped first.
+    pool: Pool,
     roles: Vec<RoleConfig>,
     template_provider: TemplateProvider,
+}
+
+/// The pool proper: its runtime, its handle and the address it serves on.
+struct Pool {
+    /// Taken on drop, so that the runtime can be shut down with a bound rather than waited on.
+    runtime: Option<tokio::runtime::Runtime>,
+    pool: PoolSv2,
+    address: SocketAddr,
 }
 
 impl PoolDeployment {
     pub fn start() -> Result<Self, Error> {
         let template_provider = TemplateProvider::start()?;
+        let pool = Pool::start(&template_provider)?;
 
+        Ok(Self {
+            pool,
+            roles: vec![RoleConfig::new(Protocol::MiningProtocol)],
+            template_provider,
+        })
+    }
+
+    /// Replace the pool with one that has served nothing, on the same node and sv2-tp.
+    ///
+    /// The old pool is stopped once the new one serves, so a caller is never left without one.
+    pub fn restart_pool(&mut self) -> Result<(), Error> {
+        self.pool = Pool::start(&self.template_provider)?;
+        Ok(())
+    }
+
+    /// Replace the pool, sv2-tp and the node, as a fresh [`start`](Self::start) would.
+    pub fn restart_all(&mut self) -> Result<(), Error> {
+        *self = Self::start()?;
+        Ok(())
+    }
+
+    /// Stop the pool and leave it stopped, as a crash would. For tests of what notices.
+    pub fn stop_pool(&mut self) {
+        self.pool.stop();
+    }
+
+    #[must_use]
+    pub fn address(&self) -> SocketAddr {
+        self.pool.address
+    }
+
+    /// The node behind the pool, for a scenario that needs to move the chain tip.
+    #[must_use]
+    pub fn template_provider(&self) -> &TemplateProvider {
+        &self.template_provider
+    }
+}
+
+impl Pool {
+    fn start(template_provider: &TemplateProvider) -> Result<Self, Error> {
         // The pool insists on binding its listener itself, so reserve a port by binding to it
         // and letting go, as sv2-apps' own tests do.
         let address = TcpListener::bind("127.0.0.1:0")?.local_addr()?;
@@ -98,23 +153,38 @@ impl PoolDeployment {
         wait_until_accepting(address)?;
 
         Ok(Self {
-            runtime,
+            runtime: Some(runtime),
             pool,
             address,
-            roles: vec![RoleConfig::new(Protocol::MiningProtocol)],
-            template_provider,
         })
     }
+}
 
-    #[must_use]
-    pub fn address(&self) -> SocketAddr {
-        self.address
+impl Pool {
+    /// Stop the pool, with a bound on how long it is given.
+    fn stop(&mut self) {
+        let Some(runtime) = self.runtime.take() else {
+            return;
+        };
+        // The timeout has to be built inside the runtime, which is where its timer lives.
+        let pool = &self.pool;
+        let acknowledged = runtime
+            .block_on(async { tokio::time::timeout(SHUTDOWN_TIMEOUT, pool.shutdown()).await })
+            .is_ok();
+        if !acknowledged {
+            log::warn!(
+                "the pool on {} did not acknowledge shutdown within {SHUTDOWN_TIMEOUT:?}; \
+                 abandoning its runtime",
+                self.address
+            );
+        }
+        runtime.shutdown_timeout(SHUTDOWN_TIMEOUT);
     }
+}
 
-    /// The node behind the pool, for a scenario that needs to move the chain tip.
-    #[must_use]
-    pub fn template_provider(&self) -> &TemplateProvider {
-        &self.template_provider
+impl Drop for Pool {
+    fn drop(&mut self) {
+        self.stop();
     }
 }
 
@@ -130,7 +200,7 @@ impl Deployment for PoolDeployment {
         // role, so it is retried briefly. The long budget belongs to startup alone: a pool
         // that is serving accepts at once, and waiting 30 seconds on one that has stopped
         // would cost that much on every connection of every later run.
-        dial(self.address, CONNECT_RETRY_BUDGET)
+        dial(self.pool.address, CONNECT_RETRY_BUDGET)
             .map_err(|e| log::debug!("could not connect to the pool: {e}"))
             .ok()
     }
@@ -150,7 +220,7 @@ impl Deployment for PoolDeployment {
     fn is_alive(&self) -> bool {
         // A short budget: a live pool answers a handshake at once, and a pool that shut itself
         // down never will, so there is nothing to wait out.
-        dial(self.address, LIVENESS_TIMEOUT).is_ok()
+        dial(self.pool.address, LIVENESS_TIMEOUT).is_ok()
     }
 }
 
@@ -166,12 +236,6 @@ fn dial(address: SocketAddr, budget: Duration) -> Result<NoiseTransport, stratam
             Err(_) if Instant::now() < deadline => thread::sleep(Duration::from_millis(50)),
             Err(e) => return Err(e),
         }
-    }
-}
-
-impl Drop for PoolDeployment {
-    fn drop(&mut self) {
-        self.runtime.block_on(self.pool.shutdown());
     }
 }
 

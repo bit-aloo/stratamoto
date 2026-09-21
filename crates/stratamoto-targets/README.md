@@ -9,19 +9,24 @@ reusing sv2-apps' own launchers rather than reimplementing them. `PoolDeployment
 `PoolSv2` on its own tokio runtime, pointed at that provider, and implements the
 `Deployment` trait so the runner and the oracles apply to it unchanged.
 
-Templates come from a node rather than from the harness. A synthesized template only has to
-satisfy a decoder, so a role could accept one no node would ever produce, and a job built from it
-or a share against that job would mean correspondingly little.
+Templates come from a node rather than from the harness, so the pool is the real thing when it
+is asked to set a connection up.
 
 ```rust
 use stratamoto_targets::pool::PoolDeployment;
 
-let deployment = PoolDeployment::start()?;   // node, sv2-tp, then the pool
+let mut deployment = PoolDeployment::start()?;   // node, sv2-tp, then the pool
 deployment.template_provider().generate_blocks(1);   // move the chain
+deployment.restart_pool()?;                          // a pool that has served nothing
+deployment.restart_all()?;                           // and a node and sv2-tp likewise
 ```
 
-Starting one takes a few seconds and waits until the pool has taken its first template and is
-accepting connections, so it is started once and reused across programs.
+Starting one waits until the pool has taken its first template and is accepting connections:
+about three seconds for the node, `sv2-tp` and the pool together, and about one second for the
+pool alone. The pool remembers what earlier connections did, so a caller that wants every
+program to start alike replaces the pool between programs; the node and `sv2-tp` keep running
+through that, since it is the pool that keeps channel state. A pool that stopped serving is
+replaced the same way, with a bound on how long it is given to shut down.
 
 ## Prerequisites
 
@@ -35,8 +40,7 @@ export STRATAMOTO_TEMPLATE_PROVIDER_CACHE=/path/to/sv2-apps/integration-tests/te
 
 A checkout of sv2-apps beside this one is found automatically.
 
-The node runs in regtest: the target is low enough that a submitted share is also a block, which
-is what makes share submission observable.
+The node runs in regtest.
 
 ## Tests
 
@@ -48,8 +52,7 @@ cargo test -p stratamoto-targets -- --ignored # the known upstream livelock
 | test | what it establishes |
 | --- | --- |
 | `pool.rs` | the pool answers `SetupConnection` within the specification |
-| `mining.rs` | a session, a channel, a job from a real template, and a share naming both |
-| `multiopen.rs` | several channels on one session each get their own answer; a message type the pool has no handler for ends that connection and leaves the pool serving |
+| `isolation.rs` | a program's result is the same alone, after another program, and after one that wedged the pool; and what a restart costs, printed with `--nocapture` |
 
 The ignored test in `pool.rs` asserts an unfixed sv2-apps livelock is present, so it fails once
 that is fixed. See the [root README](../../README.md#a-known-upstream-finding).

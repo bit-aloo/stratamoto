@@ -1,3 +1,4 @@
+pub mod backend;
 pub mod pool;
 pub mod template_provider;
 

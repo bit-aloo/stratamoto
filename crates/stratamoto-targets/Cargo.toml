@@ -6,13 +6,13 @@ readme = "README.md"
 
 [dependencies]
 stratamoto.workspace = true
+stratamoto-ir.workspace = true
 pool_sv2.workspace = true
 integration_tests_sv2.workspace = true
 stratum-apps = { workspace = true, features = ["config"] }
-tokio.workspace = true
+tokio = { workspace = true, features = ["time"] }
 log.workspace = true
 
 [dev-dependencies]
-stratamoto-ir.workspace = true
 env_logger.workspace = true
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
