@@ -64,14 +64,14 @@ stratamoto init --sharedir /tmp/share \
 | `--sharedir` | where to create the directory; it must not exist |
 | `--scenario` | the scenario binary, built with `--features nyx` |
 | `--pool` | the pool binary the scenario runs, AFL instrumented for coverage |
-| `--template-provider` | the directory sv2-apps' launcher keeps Bitcoin Core and `sv2-tp` in |
+| `--template-provider` | the directory sv2-apps' launcher keeps Bitcoin Core in |
 | `--nyx-dir` | a directory holding Nyx's `packer`: AFL++'s `nyx_mode`, or the target directory `libafl_nyx` built into |
 | `--crash-handler` | the handler to preload into the pool; defaults to the one `stratamoto-nyx-sys` builds |
 | `--memory` | the VM's memory in megabytes; 4096 by default |
 
 The scenario, the pool, the crash handler and every shared library any of them or the node's
 binaries load are copied in, resolved with `lddtree` from pax-utils when it is installed and
-`ldd` otherwise. The template provider directory's `bitcoin-*` and `sv2-tp-*` entries go in as
+`ldd` otherwise. The template provider directory's `bitcoin-*` entries go in as
 one archive, unpacked in the VM where the launcher looks for them. At boot the script fetches
 it all into `/tmp`, brings the loopback up, and starts the scenario with the pool behind a
 proxy script that preloads the crash handler into it.

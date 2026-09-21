@@ -22,7 +22,7 @@ usage: stratamoto <command>
     --sharedir <dir>            where to create it (must not exist)
     --scenario <bin>            the scenario binary, built with --features nyx
     --pool <bin>                the pool binary
-    --template-provider <dir>   where Bitcoin Core and sv2-tp live
+    --template-provider <dir>   where Bitcoin Core lives
     --nyx-dir <dir>             AFL++'s nyx_mode, or a target dir libafl_nyx built into
     --crash-handler <so>        the handler to preload into the pool (default: the built one)
     --memory <MB>               the VM's memory (default: 4096)

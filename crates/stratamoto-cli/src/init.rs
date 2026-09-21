@@ -17,7 +17,7 @@ pub struct InitArgs {
     pub scenario: PathBuf,
     /// The pool binary the scenario runs.
     pub pool: PathBuf,
-    /// The directory sv2-apps' launcher keeps Bitcoin Core and `sv2-tp` in.
+    /// The directory sv2-apps' launcher keeps Bitcoin Core in.
     pub template_provider: PathBuf,
     /// A directory holding Nyx's `packer`: AFL++'s `nyx_mode`, or a target directory
     /// `libafl_nyx` built into.
@@ -145,30 +145,24 @@ fn template_provider_binaries(dir: &Path) -> Result<Vec<PathBuf>, String> {
                     binaries.push(candidate);
                 }
             }
-        } else if name.starts_with("sv2-tp-") {
-            let candidate = entry.path().join("bin").join("sv2-tp");
-            if candidate.exists() {
-                binaries.push(candidate);
-            }
         }
     }
     if binaries.is_empty() {
         return Err(format!(
-            "{} holds no bitcoin-*/bin/bitcoind or sv2-tp-*/bin/sv2-tp",
+            "{} holds no bitcoin-*/bin/bitcoind or bitcoin-*/libexec/bitcoin-node",
             dir.display()
         ));
     }
     Ok(binaries)
 }
 
-/// One archive of the `bitcoin-*` and `sv2-tp-*` entries, unpacked in the VM under
-/// `template-provider`.
+/// One archive of the `bitcoin-*` entries, unpacked in the VM under `template-provider`.
 fn pack_template_provider(dir: &Path, archive: &Path) -> Result<(), String> {
     let mut entries = Vec::new();
     for entry in std::fs::read_dir(dir).map_err(|e| e.to_string())? {
         let name = entry.map_err(|e| e.to_string())?.file_name();
         let name = name.to_string_lossy().into_owned();
-        if name.starts_with("bitcoin-") || name.starts_with("sv2-tp-") {
+        if name.starts_with("bitcoin-") {
             entries.push(name);
         }
     }
@@ -327,8 +321,7 @@ mod tests {
             found,
             vec![
                 "bitcoin-31.0/bin/bitcoind",
-                "bitcoin-31.0/libexec/bitcoin-node",
-                "sv2-tp-1.1.0/bin/sv2-tp"
+                "bitcoin-31.0/libexec/bitcoin-node"
             ]
         );
     }
