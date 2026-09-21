@@ -16,8 +16,8 @@ use stratum_apps::stratum_core::{
 };
 
 use crate::{
-    connection::{Frame, assemble},
     error::{Error, Result},
+    frame::{Frame, assemble},
     transport::Transport,
 };
 

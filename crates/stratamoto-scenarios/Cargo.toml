@@ -9,15 +9,8 @@ stratamoto.workspace = true
 stratamoto-ir.workspace = true
 stratamoto-targets.workspace = true
 
-[dev-dependencies]
-postcard.workspace = true
-
 [lib]
 path = "src/lib.rs"
-
-[[bin]]
-name = "setup_connection"
-path = "bin/setup_connection.rs"
 
 [[bin]]
 name = "pool_setup_connection"

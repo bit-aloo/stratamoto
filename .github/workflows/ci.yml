@@ -52,9 +52,8 @@ jobs:
       - uses: ./.github/actions/capnp
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      # Everything that runs on the deterministic simulator. The real roles are excluded
-      # because they need a Bitcoin Core node, not because the build is any lighter: the
-      # scenarios crate depends on the pool either way.
+      # The real roles are excluded because they need a Bitcoin Core node, not because the
+      # build is any lighter: the scenarios crate depends on the pool either way.
       - run: cargo test --workspace --exclude stratamoto-targets --locked
 
   real-roles:

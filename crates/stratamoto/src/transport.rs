@@ -1,13 +1,11 @@
 use std::time::Duration;
 
-use crate::{connection::Frame, error::Result};
+use crate::{error::Result, frame::Frame};
 
 /// A link the harness can put Sv2 frames on.
 ///
-/// The interface is synchronous because a real role runs on its own runtime behind a real
-/// socket, while a simulated one runs on the deterministic executor; a blocking call is the
-/// only shape both can offer. The simulated implementation drives its executor for the
-/// duration of the call, so time only advances while the harness is waiting.
+/// The interface is synchronous: a real role runs on its own runtime behind a real socket, and
+/// there is nothing for the harness to do while it waits.
 pub trait Transport {
     fn send(
         &mut self,
@@ -39,10 +37,6 @@ pub trait Deployment {
 
     /// Whether the deployment is still serving, i.e. a fresh connection can still be opened.
     ///
-    /// The simulated roles cannot stop, so the default is always alive; a real deployment
-    /// overrides this to probe the role, which is how a crash or a self inflicted shutdown is
-    /// caught after the run that caused it.
-    fn is_alive(&self) -> bool {
-        true
-    }
+    /// This is how a crash or a self inflicted shutdown is caught after the run that caused it.
+    fn is_alive(&self) -> bool;
 }

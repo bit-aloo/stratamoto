@@ -1,13 +1,4 @@
-pub mod upstream;
-
 use stratum_apps::stratum_core::common_messages_sv2::Protocol;
-
-use crate::{connection::Connection, error::Result};
-
-/// A component of an Sv2 deployment, driven by the simulator as a spawned task.
-pub trait Role {
-    fn run(self, connection: Connection) -> impl Future<Output = Result<()>> + Send;
-}
 
 /// What a role accepts on a connection.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

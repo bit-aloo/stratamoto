@@ -18,13 +18,13 @@ can be sent except as raw bytes.
 
 | message | direction | IR | compiler | runner | oracle | test |
 | --- | --- | --- | --- | --- | --- | --- |
-| SetupConnection | -> | yes | yes | send | SetupConnectionOracle | oracle, outcomes, pool |
-| SetupConnection.Success | <- | success block | yes | recv | version, flags, protocol | oracle, outcomes, events, pool |
-| SetupConnection.Error | <- | skips the block | yes | recv | flags reporting | oracle, outcomes, pool |
+| SetupConnection | -> | yes | yes | send | SetupConnectionOracle | oracle, pool |
+| SetupConnection.Success | <- | success block | yes | recv | version, flags, protocol | oracle, pool |
+| SetupConnection.Error | <- | skips the block | yes | recv | flags reporting | oracle, pool |
 | ChannelEndpointChanged | <- | no | no | recv as other | no | no |
-| Reconnect | <- | no | no | recv | no | events |
-| unknown message type | -> | SendRawFrame | yes | send, recv as unknown | no | events, generators |
-| unknown extension | -> | SendRawFrame | yes | send, recv as unknown | no | events, generators |
+| Reconnect | <- | no | no | recv | no | no |
+| unknown message type | -> | SendRawFrame | yes | send, recv as unknown | no | generators |
+| unknown extension | -> | SendRawFrame | yes | send, recv as unknown | no | generators |
 
 ## Mining, template distribution and job declaration protocols
 

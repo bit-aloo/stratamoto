@@ -1,7 +1,7 @@
 # stratamoto
 
-A deterministic simulator and fuzzer for [Stratum V2](https://github.com/stratum-mining/sv2-spec)
-roles, built along the lines of [fuzzamoto](https://github.com/oss-garage/fuzzamoto).
+A fuzzer for [Stratum V2](https://github.com/stratum-mining/sv2-spec) roles, built along the
+lines of [fuzzamoto](https://github.com/dergoegge/fuzzamoto).
 
 How far each protocol message is taken is tracked in [`FEATURES.md`](FEATURES.md).
 
@@ -15,17 +15,17 @@ separates this from feeding random bytes at a decoder.
 The scope today is the `SetupConnection` message flow: every component handles that one flow
 completely before the next message is added.
 
-The same program runs against either simulated roles on a deterministic runtime, or against the
-real roles from [sv2-apps](https://github.com/stratum-mining/sv2-apps) over real sockets, and
-the same conformance checks apply to both.
+Programs run against the real roles from [sv2-apps](https://github.com/stratum-mining/sv2-apps)
+over real sockets. A deterministic runtime for simulated roles is being sketched in
+`stratamoto-dst`, and is not wired in yet.
 
 ## Layout
 
 | crate | what it is |
 | --- | --- |
-| [`stratamoto-dst`](crates/stratamoto-dst) | the runtime: a seeded executor, clock, network and filesystem |
+| [`stratamoto-dst`](crates/stratamoto-dst) | a seeded executor, clock, network and filesystem, in progress and not yet used |
 | [`stratamoto-ir`](crates/stratamoto-ir) | the programs: typed variables, operations, builder, compiler, generators, mutators, minimizers |
-| [`stratamoto`](crates/stratamoto) | the harness: transports, deployments, the runner and the oracles |
+| [`stratamoto`](crates/stratamoto) | the harness: the transport, the runner and the oracles |
 | [`stratamoto-targets`](crates/stratamoto-targets) | the real roles: sv2-apps' pool, against Bitcoin Core |
 | [`stratamoto-scenarios`](crates/stratamoto-scenarios) | one binary per scenario |
 | [`stratamoto-cli`](crates/stratamoto-cli) | generating, printing and compiling programs by hand |
@@ -41,21 +41,20 @@ cargo build
 cargo test
 ```
 
-The simulated side needs nothing but a Rust toolchain (built with 1.98, edition 2024). Anything
-touching a real role additionally needs Bitcoin Core and `sv2-tp`; see
+The programs and the harness need nothing but a Rust toolchain (built with 1.98, edition 2024).
+Anything touching a real role additionally needs Bitcoin Core and `sv2-tp`; see
 [running against real roles](#running-against-real-roles).
 
 ### Run one scenario
 
 ```sh
 cargo build
-target/debug/stratamoto generate 7 3 | target/debug/stratamoto print          # read it
-target/debug/stratamoto generate 7 3 | target/debug/setup_connection
+target/debug/stratamoto generate 7 1 | target/debug/stratamoto print          # read it
+target/debug/stratamoto generate 7 1 | target/debug/pool_setup_connection
 ```
 
 A scenario binary takes a serialized program on stdin and exits non-zero when an oracle finds a
-violation. The program carries the seed its simulated deployment is built from, so the same
-bytes replay the same run.
+violation.
 
 ## Running against real roles
 

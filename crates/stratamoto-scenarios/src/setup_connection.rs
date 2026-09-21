@@ -1,11 +1,8 @@
 use stratamoto::{
-    deployment::SimulatedDeployment,
     error::{Error, Result},
     oracle::{CrashOracle, HarnessIntegrityOracle, Oracle, OracleResult, SetupConnectionOracle},
-    roles::RoleConfig,
-    runner::{self, Execution},
-    scenario::{Scenario, ScenarioInput, ScenarioResult},
-    stratum_core::common_messages_sv2::Protocol,
+    runner::Execution,
+    scenario::{ScenarioInput, ScenarioResult},
     transport::Deployment,
 };
 use stratamoto_ir::{
@@ -13,19 +10,6 @@ use stratamoto_ir::{
     artifact::read_program,
     compiler::{CompiledProgram, Compiler},
 };
-
-/// The deployment programs are run against: one upstream per subprotocol.
-///
-/// Template distribution supports a feature flag so that flag negotiation, and not just
-/// rejection, is reachable.
-#[must_use]
-pub fn roles() -> Vec<RoleConfig> {
-    vec![
-        RoleConfig::new(Protocol::MiningProtocol),
-        RoleConfig::new(Protocol::JobDeclarationProtocol),
-        RoleConfig::new(Protocol::TemplateDistributionProtocol).with_supported_flags(0b1),
-    ]
-}
 
 pub struct TestCase {
     pub program: CompiledProgram,
@@ -67,32 +51,6 @@ impl ScenarioInput for TestCase {
     fn decode(bytes: &[u8]) -> Result<Self> {
         let program = read_program(bytes).map_err(|e| Error::Input(e.to_string()))?;
         Self::from_program(&program)
-    }
-}
-
-/// The setup connection scenario against the mock roles.
-///
-/// Every test case gets a fresh deployment, built from the seed its own program carries, so a
-/// case cannot be affected by the ones before it and needs nothing but its bytes to replay.
-pub struct SetupConnectionScenario;
-
-impl SetupConnectionScenario {
-    /// Run a test case and hand back what the deployment did, for a caller that wants more
-    /// than a pass or fail.
-    pub fn execute(&self, testcase: &TestCase) -> Run {
-        let deployment = SimulatedDeployment::new(testcase.program.context.seed, roles());
-        let execution = runner::run(&deployment, &testcase.program);
-        Run::of(&deployment, &testcase.program, execution, evaluate)
-    }
-}
-
-impl Scenario<TestCase> for SetupConnectionScenario {
-    fn new() -> Result<Self> {
-        Ok(Self)
-    }
-
-    fn run(&mut self, testcase: TestCase) -> ScenarioResult {
-        self.execute(&testcase).result
     }
 }
 

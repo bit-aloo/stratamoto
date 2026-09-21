@@ -7,20 +7,18 @@ The harness: how a compiled program reaches a role, and how what comes back is j
 | module | what it is |
 | --- | --- |
 | `transport` | the `Transport` and `Deployment` traits every target is reached through |
-| `connection` | Sv2 frames over the simulated network |
+| `frame` | laying out an Sv2 frame, and holding one that arrived |
 | `noise` | Sv2 frames over a real socket, with the Noise handshake real roles require |
-| `deployment` | the simulated deployment, roles running on the seeded runtime |
-| `roles` | the mock roles, and what each accepts |
+| `roles` | what a role accepts on a connection |
+| `events` | one dispatcher per connection, correlating answers with requests |
 | `runner` | carries out a compiled program's actions and records what came back |
 | `oracle` | judges an execution |
 | `scenario` | the `Scenario` trait and the `stratamoto_main!` entry point |
 
-## One interface, two kinds of target
+## One interface
 
 `Transport` is synchronous. A real role runs on its own runtime behind a real socket and there is
-nothing for the harness to do while it waits; a simulated role runs on the deterministic
-executor, and its transport drives that executor for the duration of each call, which is what
-keeps the roles making progress between the harness's own steps.
+nothing for the harness to do while it waits.
 
 `Deployment` is what a program addresses: it opens connections to roles by index, says what each
 role serves, and answers whether it is still alive. Implement it and the runner and every oracle
@@ -54,5 +52,4 @@ stratamoto_main!(MyScenario, TestCase);
 ```
 
 `stratamoto_main!` reads the input from `STRATAMOTO_INPUT` or stdin and turns the result into an
-exit code. Everything a run depends on travels with the input: a program carries the seed its
-simulated deployment is built from, so there is no seed to read from the environment.
+exit code.
