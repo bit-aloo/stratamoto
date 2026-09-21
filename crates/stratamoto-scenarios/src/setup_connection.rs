@@ -65,6 +65,9 @@ pub fn evaluate<D: stratamoto::transport::Deployment>(
     program: &stratamoto_ir::compiler::CompiledProgram,
     execution: &Execution,
 ) -> ScenarioResult {
+    for (session, outcome) in &execution.sessions {
+        tracing::debug!("session {session}: {outcome:?}");
+    }
     let integrity = HarnessIntegrityOracle;
     if let OracleResult::Fail(e) = integrity.evaluate(deployment, program, execution) {
         return ScenarioResult::Infrastructure(format!("{}: {e}", integrity.name()));
