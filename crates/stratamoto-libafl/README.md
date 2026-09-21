@@ -38,6 +38,10 @@ number of roles programs address comes from `--roles`.
 ## Building
 
 `libafl_nyx` builds QEMU-Nyx and the Nyx packer into the target directory the first time,
-which needs their build dependencies (see fuzzamoto's `Dockerfile.libafl`) and a while. The
-crate is not a default member of the workspace, so `cargo build` at the root leaves it alone;
-`cargo build -p stratamoto-libafl` builds it.
+which needs their build dependencies and a while. The crate is not a default member of the
+workspace, so `cargo build` at the root leaves it alone; `cargo build -p stratamoto-libafl`
+builds it.
+
+[`Dockerfile.libafl`](../../Dockerfile.libafl) at the root is an image with those
+dependencies, an instrumented pool and the node's binaries in it, to build and fuzz in without
+installing any of them; see [fuzzing from a container](../../README.md#fuzz-from-a-container).

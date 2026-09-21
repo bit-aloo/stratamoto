@@ -1,0 +1,3 @@
+# The image takes only the recipes in; the checkout is mounted into the container.
+*
+!ci

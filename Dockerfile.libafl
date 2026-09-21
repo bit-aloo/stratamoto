@@ -1,0 +1,92 @@
+FROM debian:bookworm
+
+# ------ Build and install dependencies ------
+
+# Deps for QEMU-Nyx and the Nyx packer (which libafl_nyx builds), cargo-afl, and the workspace:
+# capnp is what bitcoin-capnp-types compiles its schemas with.
+# vim & tmux are useful
+RUN apt-get update && apt-get install -y --no-install-recommends \
+  ca-certificates \
+  curl \
+  git \
+  build-essential \
+  clang \
+  cmake \
+  pkg-config \
+  ninja-build \
+  libgtk-3-dev \
+  libcapstone-dev \
+  libzstd-dev \
+  libssl-dev \
+  pax-utils \
+  python3 \
+  python3-msgpack \
+  python3-jinja2 \
+  cpio \
+  capnproto \
+  libcapnp-dev \
+  tmux \
+  vim
+
+# Install rust and tools
+ARG RUST_V=1.98.0
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain ${RUST_V}
+ENV PATH="/root/.cargo/bin:${PATH}"
+RUN cargo install --locked cargo-afl
+RUN cargo install --locked just
+
+WORKDIR /
+
+# ------ Build the pool, and fetch the node it is fed from ------
+
+# The pool under test, AFL instrumented. The default commit is the sv2-apps revision the
+# workspace pins in Cargo.toml, so that the harness speaks the wire format the pool does.
+ARG OWNER=stratum-mining
+ARG REPO=sv2-apps
+ARG PR_NUMBER=
+ARG SV2_APPS_COMMIT=ab8f30f1784ea20c2de1b2726c47e7eea10f4556
+
+RUN git init "${REPO}" && cd "${REPO}" && \
+    git remote add origin "https://github.com/${OWNER}/${REPO}.git" && \
+    if [ -n "${PR_NUMBER}" ]; then \
+        git fetch --depth 1 origin "pull/${PR_NUMBER}/head"; \
+    else \
+        git fetch --depth 1 origin "${SV2_APPS_COMMIT}"; \
+    fi && \
+    git checkout FETCH_HEAD
+
+# sv2-apps pins a toolchain of its own, which cargo-afl's runtime was not built for.
+RUN cd "${REPO}/pool-apps" && \
+    RUSTUP_TOOLCHAIN=${RUST_V} cargo afl build --release --locked --package pool_sv2 && \
+    mkdir -p /sv2/bin && cp target/release/pool_sv2 /sv2/bin/ && \
+    rm -rf target
+
+ENV STRATAMOTO_POOL=/sv2/bin/pool_sv2
+
+# Bitcoin Core, which the pool takes its templates from over IPC, laid out the way sv2-apps'
+# launcher keeps it and at the version it asks for, so that it finds it and downloads nothing.
+ARG BITCOIN_CORE_V=31.0
+ARG BITCOIN_CORE_SHA256=d3e4c58a35b1d0a97a457462c94f55501ad167c660c245cb1ffa565641c65074
+
+RUN mkdir /template-provider && cd /template-provider && \
+    curl -fsSL -o bitcoin.tar.gz \
+      "https://bitcoincore.org/bin/bitcoin-core-${BITCOIN_CORE_V}/bitcoin-${BITCOIN_CORE_V}-x86_64-linux-gnu.tar.gz" && \
+    echo "${BITCOIN_CORE_SHA256}  bitcoin.tar.gz" | sha256sum -c - && \
+    tar -xzf bitcoin.tar.gz && \
+    rm bitcoin.tar.gz
+
+ENV STRATAMOTO_TEMPLATE_PROVIDER_CACHE=/template-provider
+
+# ------ The checkout is mounted at /stratamoto ------
+
+# Needed to avoid "fatal: detected dubious ownership in repository" errors from
+# the Nyx build inside of target/
+RUN git config --global --add safe.directory /stratamoto
+
+# A target directory of the container's own: what the host built is linked against the host's
+# libc. It stays inside the checkout because the Nyx build has to run inside a git repository.
+ENV CARGO_TARGET_DIR=/stratamoto/target/docker
+
+COPY ./ci /ci
+
+WORKDIR /stratamoto

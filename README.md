@@ -92,6 +92,39 @@ target/release/stratamoto-libafl --input /tmp/in --output /tmp/out --share /tmp/
 size the pool's instrumentation expects. Findings land under `/tmp/out/cpu_*/crashes`, filed by
 cause, as bare programs a scenario binary replays. See [`stratamoto-libafl`](crates/stratamoto-libafl).
 
+### Fuzz from a container
+
+[`Dockerfile.libafl`](Dockerfile.libafl) carries all of the above but the checkout: the
+toolchain, cargo-afl, what QEMU-Nyx needs to build, the pool built with AFL instrumentation,
+and Bitcoin Core where the launcher looks for it. The host still has to be bare metal with KVM
+and the VMware backdoor enabled, as above.
+
+```sh
+docker build -f Dockerfile.libafl -t stratamoto-libafl .
+docker run --privileged --shm-size=4g -it -v $PWD:/stratamoto stratamoto-libafl bash
+```
+
+`--privileged` is what lets Nyx use KVM, and the fuzzer's clients talk over shared memory, so
+`/dev/shm` wants to be larger than Docker's default. Inside the container:
+
+```sh
+just -f /ci/libafl.justfile run            # build, create the share directory, fuzz on core 0
+just -f /ci/libafl.justfile cores=0-7 run
+```
+
+The [recipes](ci/libafl.justfile) are the commands above and can be run by hand instead. The
+container builds into `target/docker`, apart from anything the host built, and QEMU-Nyx is
+built there once, on the first build.
+
+The pool comes from sv2-apps at the revision this workspace pins. Another one is a build
+argument away:
+
+```sh
+docker build --build-arg PR_NUMBER=1234 -f Dockerfile.libafl -t stratamoto-libafl .
+docker build --build-arg SV2_APPS_COMMIT=abc123 -f Dockerfile.libafl -t stratamoto-libafl .
+docker build --build-arg OWNER=someone --build-arg SV2_APPS_COMMIT=abc123 -f Dockerfile.libafl -t stratamoto-libafl .
+```
+
 ## Running against real roles
 
 `stratamoto-targets` starts sv2-apps' pool binary as its own process and feeds it from a real
