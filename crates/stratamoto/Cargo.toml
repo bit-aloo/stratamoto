@@ -7,9 +7,14 @@ readme = "README.md"
 [dependencies]
 serde.workspace = true
 stratamoto-ir.workspace = true
+stratamoto-nyx-sys = { workspace = true, optional = true }
 stratum-apps.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
+
+[features]
+# Talk to the fuzzer through the Nyx agent instead of files and exit codes.
+nyx = ["dep:stratamoto-nyx-sys"]
 
 [dev-dependencies]
 bs58 = { version = "0.5", features = ["check"] }

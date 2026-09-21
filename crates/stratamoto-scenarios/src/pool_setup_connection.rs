@@ -1,12 +1,19 @@
+use std::path::Path;
+
 use stratamoto::{
     error::{Error, Result},
     runner::{self, Execution},
+    runners::dump_to_host,
     scenario::{Scenario, ScenarioResult},
     transport::Deployment,
 };
+use stratamoto_ir::ProgramContext;
 use stratamoto_targets::pool::PoolDeployment;
 
 use crate::setup_connection::{Run, TestCase};
+
+/// The name the program context is dumped under, for the fuzzer to generate programs against.
+pub const CONTEXT_DUMP: &str = "ir.context";
 
 /// The setup connection scenario against sv2-apps' pool.
 ///
@@ -18,10 +25,42 @@ pub struct PoolSetupConnectionScenario {
 }
 
 impl PoolSetupConnectionScenario {
-    /// Bring the pool up, with the node and `sv2-tp` behind it.
+    /// Bring the pool up, with the node and `sv2-tp` behind it, from the binary
+    /// `STRATAMOTO_POOL` names.
     pub fn start() -> Result<Self> {
         let deployment = PoolDeployment::start().map_err(|e| Error::Target(e.to_string()))?;
-        Ok(Self { deployment })
+        Ok(Self::over(deployment))
+    }
+
+    /// Bring the pool up from the binary at `pool`.
+    pub fn start_with(pool: &Path) -> Result<Self> {
+        let deployment =
+            PoolDeployment::start_with(pool).map_err(|e| Error::Target(e.to_string()))?;
+        Ok(Self::over(deployment))
+    }
+
+    fn over(deployment: PoolDeployment) -> Self {
+        let scenario = Self { deployment };
+        scenario.dump_context();
+        scenario
+    }
+
+    /// The context programs for this deployment are written in.
+    #[must_use]
+    pub fn context(&self) -> ProgramContext {
+        ProgramContext {
+            num_roles: self.deployment.num_roles(),
+            num_connections: 0,
+            seed: 0,
+        }
+    }
+
+    /// Hand the fuzzer the context, so that what it generates addresses the roles that exist.
+    fn dump_context(&self) {
+        match postcard::to_allocvec(&self.context()) {
+            Ok(bytes) => dump_to_host(CONTEXT_DUMP, &bytes),
+            Err(e) => tracing::warn!("could not encode the program context: {e}"),
+        }
     }
 
     #[must_use]
@@ -63,10 +102,13 @@ impl PoolSetupConnectionScenario {
 }
 
 impl Scenario<TestCase> for PoolSetupConnectionScenario {
-    /// A program's seed has no effect here: the pool runs on its own runtime, not on the
-    /// simulator.
-    fn new() -> Result<Self> {
-        Self::start()
+    /// The pool binary is the first argument, as a fuzzer's share directory passes it, or
+    /// `STRATAMOTO_POOL` when there is none.
+    fn new(args: &[String]) -> Result<Self> {
+        match args.get(1) {
+            Some(pool) => Self::start_with(Path::new(pool)),
+            None => Self::start(),
+        }
     }
 
     fn run(&mut self, testcase: TestCase) -> ScenarioResult {

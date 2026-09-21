@@ -8,6 +8,15 @@ readme = "README.md"
 stratamoto.workspace = true
 stratamoto-ir.workspace = true
 stratamoto-targets.workspace = true
+postcard.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+rand.workspace = true
+
+[features]
+# Build the scenarios to run inside a Nyx VM, driven by the fuzzer.
+nyx = ["stratamoto/nyx"]
 
 [lib]
 path = "src/lib.rs"

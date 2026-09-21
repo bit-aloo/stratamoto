@@ -3999,6 +3999,7 @@ dependencies = [
  "bs58 0.5.1",
  "serde",
  "stratamoto-ir",
+ "stratamoto-nyx-sys",
  "stratum-apps",
  "tracing",
  "tracing-subscriber",
@@ -4057,9 +4058,12 @@ dependencies = [
 name = "stratamoto-scenarios"
 version = "0.1.0"
 dependencies = [
+ "postcard",
+ "rand 0.10.1",
  "stratamoto",
  "stratamoto-ir",
  "stratamoto-targets",
+ "tracing",
 ]
 
 [[package]]

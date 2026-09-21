@@ -28,7 +28,11 @@ fn main() {
     println!("cargo:rerun-if-env-changed={POOL_BINARY_ENV}");
 
     let mut agent = cc::Build::new();
-    agent.file("src/nyx-agent.c").define("NO_PT_NYX", None);
+    agent
+        .file("src/nyx-agent.c")
+        .define("NO_PT_NYX", None)
+        // The header defines helpers the agent does not call.
+        .flag("-Wno-unused-function");
     if let Some(binary) = std::env::var_os(POOL_BINARY_ENV) {
         let binary = PathBuf::from(binary);
         println!("cargo:rerun-if-changed={}", binary.display());

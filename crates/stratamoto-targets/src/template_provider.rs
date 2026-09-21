@@ -88,8 +88,12 @@ fn use_existing_binaries() -> Result<(), Error> {
     let Some(cache) = cached_binaries() else {
         return Ok(());
     };
-    std::os::unix::fs::symlink(&cache, &local)?;
-    Ok(())
+    // Two deployments starting at once both find it missing; whichever links second is fine.
+    match std::os::unix::fs::symlink(&cache, &local) {
+        Ok(()) => Ok(()),
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => Ok(()),
+        Err(e) => Err(e.into()),
+    }
 }
 
 fn cached_binaries() -> Option<PathBuf> {

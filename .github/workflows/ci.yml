@@ -52,9 +52,9 @@ jobs:
       - uses: ./.github/actions/capnp
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      # The real roles are excluded because they need a Bitcoin Core node, not because the
-      # build is any lighter: the scenarios crate depends on the pool either way.
-      - run: cargo test --workspace --exclude stratamoto-targets --locked
+      # The real roles and the scenario binaries over them are excluded because they need a
+      # Bitcoin Core node and the pool binary, not because the build is any lighter.
+      - run: cargo test --workspace --exclude stratamoto-targets --exclude stratamoto-scenarios --locked
 
   real-roles:
     name: test against sv2-apps' pool
@@ -88,4 +88,4 @@ jobs:
 
       # The ignored test asserts an unfixed upstream livelock is present and is a race, so it
       # is deliberately not run here.
-      - run: STRATAMOTO_POOL=$PWD/sv2/bin/pool_sv2 cargo test -p stratamoto-targets --locked
+      - run: STRATAMOTO_POOL=$PWD/sv2/bin/pool_sv2 cargo test -p stratamoto-targets -p stratamoto-scenarios --locked

@@ -14,6 +14,7 @@ The harness: how a compiled program reaches a role, and how what comes back is j
 | `runner` | carries out a compiled program's actions and records what came back |
 | `oracle` | judges an execution |
 | `scenario` | the `Scenario` trait and the `stratamoto_main!` entry point |
+| `runners` | where a scenario's input comes from and its verdict goes: files and exit codes, or the Nyx agent |
 
 ## One interface
 
@@ -44,12 +45,21 @@ drown the real ones.
 use stratamoto::scenario::{Scenario, ScenarioResult};
 
 impl Scenario<TestCase> for MyScenario {
-    fn new() -> Result<Self> { /* bring up what every test case shares */ }
+    fn new(args: &[String]) -> Result<Self> { /* bring up what every test case shares */ }
     fn run(&mut self, testcase: TestCase) -> ScenarioResult { /* run and judge */ }
 }
 
 stratamoto_main!(MyScenario, TestCase);
 ```
 
-`stratamoto_main!` reads the input from `STRATAMOTO_INPUT` or stdin and turns the result into an
-exit code.
+`stratamoto_main!` sets the scenario up from the command line, asks the runner for the input,
+runs it and reports the result through the runner. Built without features, the runner reads
+`STRATAMOTO_INPUT` or stdin and reports through the exit code: 0 for a pass or a skip, 1 for a
+finding, 2 when the harness could not run the input at all. Built with the `nyx` feature, the
+runner is the Nyx agent: asking for the input takes the VM snapshot, a finding is reported to
+the fuzzer with its message, and the snapshot is restored afterwards. A binary built that way
+runs only inside a Nyx VM.
+
+A finding's message starts with `FAIL: ` and the name of the oracle that found it; a run the
+harness could not complete starts with `INFRASTRUCTURE: `. The fuzzer files findings by that
+prefix.

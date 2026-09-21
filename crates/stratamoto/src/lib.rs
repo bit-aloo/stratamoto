@@ -5,6 +5,7 @@ pub mod noise;
 pub mod oracle;
 pub mod roles;
 pub mod runner;
+pub mod runners;
 pub mod scenario;
 pub mod transport;
 
