@@ -6,6 +6,7 @@ readme = "README.md"
 
 [dependencies]
 stratamoto-ir.workspace = true
+stratamoto-nyx-sys.workspace = true
 postcard.workspace = true
 rand.workspace = true
 

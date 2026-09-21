@@ -1,4 +1,9 @@
-use std::io::{Read, Write};
+mod init;
+
+use std::{
+    io::{Read, Write},
+    path::PathBuf,
+};
 
 use rand::{SeedableRng, rngs::SmallRng};
 use stratamoto_ir::{
@@ -14,6 +19,14 @@ usage: stratamoto <command>
   generate [seed] [roles]   write a program for the given seed to stdout
   print                     pretty print a program, or an artifact, read from stdin
   compile                   print the actions a program from stdin compiles to
+  init <options>            create a Nyx share directory for a scenario:
+    --sharedir <dir>            where to create it (must not exist)
+    --scenario <bin>            the scenario binary, built with --features nyx
+    --pool <bin>                the pool binary
+    --template-provider <dir>   where Bitcoin Core and sv2-tp live
+    --nyx-dir <dir>             AFL++'s nyx_mode, or a target dir libafl_nyx built into
+    --crash-handler <so>        the handler to preload into the pool (default: the built one)
+    --memory <MB>               the VM's memory (default: 4096)
 ";
 
 fn main() -> std::process::ExitCode {
@@ -22,6 +35,7 @@ fn main() -> std::process::ExitCode {
         Some("generate") => generate(&args[1..]),
         Some("print") => print(),
         Some("compile") => compile(),
+        Some("init") => init_args(&args[1..]).and_then(|args| init::execute(&args)),
         _ => {
             eprint!("{USAGE}");
             return std::process::ExitCode::FAILURE;
@@ -109,6 +123,46 @@ fn compile() -> Result<(), String> {
         println!("[{instruction}] {action:?}");
     }
     Ok(())
+}
+
+/// `--key value` pairs into the init command's arguments.
+fn init_args(args: &[String]) -> Result<init::InitArgs, String> {
+    let mut sharedir = None;
+    let mut scenario = None;
+    let mut pool = None;
+    let mut template_provider = None;
+    let mut nyx_dir = None;
+    let mut crash_handler = PathBuf::from(stratamoto_nyx_sys::CRASH_HANDLER);
+    let mut memory = 4096;
+
+    let mut pairs = args.chunks(2);
+    for pair in &mut pairs {
+        let [key, value] = pair else {
+            return Err(format!("{} takes a value", pair[0]));
+        };
+        match key.as_str() {
+            "--sharedir" => sharedir = Some(PathBuf::from(value)),
+            "--scenario" => scenario = Some(PathBuf::from(value)),
+            "--pool" => pool = Some(PathBuf::from(value)),
+            "--template-provider" => template_provider = Some(PathBuf::from(value)),
+            "--nyx-dir" => nyx_dir = Some(PathBuf::from(value)),
+            "--crash-handler" => crash_handler = PathBuf::from(value),
+            "--memory" => memory = value.parse().map_err(err)?,
+            other => return Err(format!("unknown option {other}")),
+        }
+    }
+    let required = |name: &str, value: Option<PathBuf>| {
+        value.ok_or_else(|| format!("init needs {name}; see `stratamoto` for the options"))
+    };
+    Ok(init::InitArgs {
+        sharedir: required("--sharedir", sharedir)?,
+        scenario: required("--scenario", scenario)?,
+        pool: required("--pool", pool)?,
+        template_provider: required("--template-provider", template_provider)?,
+        nyx_dir: required("--nyx-dir", nyx_dir)?,
+        crash_handler,
+        memory,
+    })
 }
 
 fn read_stdin() -> Result<Vec<u8>, String> {
