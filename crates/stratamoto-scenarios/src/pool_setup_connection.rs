@@ -95,7 +95,7 @@ impl PoolSetupConnectionScenario {
             crate::setup_connection::evaluate,
         );
         if let Err(e) = self.backend.report_and_reset(&run.digest.verdict) {
-            log::warn!("the pool could not be reset after a run: {e}");
+            tracing::warn!("the pool could not be reset after a run: {e}");
         }
         run
     }

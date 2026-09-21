@@ -3997,11 +3997,12 @@ name = "stratamoto"
 version = "0.1.0"
 dependencies = [
  "bs58 0.5.1",
- "log",
  "serde",
  "stratamoto-dst",
  "stratamoto-ir",
  "stratum-core",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -4031,13 +4032,13 @@ dependencies = [
 name = "stratamoto-fuzz"
 version = "0.1.0"
 dependencies = [
- "env_logger",
- "log",
  "postcard",
  "rand 0.10.1",
  "stratamoto",
  "stratamoto-ir",
  "stratamoto-scenarios",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -4063,27 +4064,24 @@ dependencies = [
 name = "stratamoto-scenarios"
 version = "0.1.0"
 dependencies = [
- "env_logger",
- "log",
  "postcard",
  "stratamoto",
  "stratamoto-ir",
  "stratamoto-targets",
+ "tracing",
 ]
 
 [[package]]
 name = "stratamoto-targets"
 version = "0.1.0"
 dependencies = [
- "env_logger",
  "integration_tests_sv2",
- "log",
  "pool_sv2",
  "stratamoto",
  "stratamoto-ir",
  "stratum-apps",
  "tokio",
- "tracing-subscriber",
+ "tracing",
 ]
 
 [[package]]

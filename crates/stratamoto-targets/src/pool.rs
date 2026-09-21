@@ -144,7 +144,7 @@ impl Pool {
         let starting = pool.clone();
         runtime.spawn(async move {
             if let Err(e) = starting.start().await {
-                log::error!("pool stopped: {e:?}");
+                tracing::error!("pool stopped: {e:?}");
             }
         });
 
@@ -172,7 +172,7 @@ impl Pool {
             .block_on(async { tokio::time::timeout(SHUTDOWN_TIMEOUT, pool.shutdown()).await })
             .is_ok();
         if !acknowledged {
-            log::warn!(
+            tracing::warn!(
                 "the pool on {} did not acknowledge shutdown within {SHUTDOWN_TIMEOUT:?}; \
                  abandoning its runtime",
                 self.address
@@ -201,7 +201,7 @@ impl Deployment for PoolDeployment {
         // that is serving accepts at once, and waiting 30 seconds on one that has stopped
         // would cost that much on every connection of every later run.
         dial(self.pool.address, CONNECT_RETRY_BUDGET)
-            .map_err(|e| log::debug!("could not connect to the pool: {e}"))
+            .map_err(|e| tracing::debug!("could not connect to the pool: {e}"))
             .ok()
     }
 

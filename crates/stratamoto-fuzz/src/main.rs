@@ -92,7 +92,7 @@ fn outcome(
         return (Outcome::Skip, None);
     };
     let run = execute(&testcase);
-    log::debug!("digest: {:?}", run.digest);
+    tracing::debug!("digest: {:?}", run.digest);
     let trace = postcard::to_allocvec(&(&run.execution, &run.digest)).ok();
     let outcome = match run.result {
         ScenarioResult::Ok => Outcome::Ok(Behaviour {
@@ -106,7 +106,12 @@ fn outcome(
 }
 
 fn main() -> ExitCode {
-    env_logger::init();
+    // One subscriber for the harness and the real roles alike, filtered by RUST_LOG; the
+    // runtime's `log` records are forwarded to it as well.
+    tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .with_writer(std::io::stderr)
+        .init();
 
     let args: Vec<String> = std::env::args().skip(1).collect();
     let parse = |i: usize, default: u64| -> Option<u64> {

@@ -80,7 +80,7 @@ impl Corpus {
             let bytes = fs::read(&path)?;
             match stratamoto_ir::artifact::read_program(&bytes) {
                 Ok(program) => programs.push(program),
-                Err(e) => log::warn!("skipping {}: {e}", path.display()),
+                Err(e) => tracing::warn!("skipping {}: {e}", path.display()),
             }
         }
         Ok(programs)
@@ -124,10 +124,10 @@ impl Corpus {
             match postcard::to_allocvec(&program) {
                 Ok(bytes) => {
                     if let Err(e) = fs::write(&path, bytes) {
-                        log::warn!("could not save a corpus entry to {}: {e}", path.display());
+                        tracing::warn!("could not save a corpus entry to {}: {e}", path.display());
                     }
                 }
-                Err(e) => log::warn!("could not encode a corpus entry: {e}"),
+                Err(e) => tracing::warn!("could not encode a corpus entry: {e}"),
             }
         }
         self.entries.push(Entry {

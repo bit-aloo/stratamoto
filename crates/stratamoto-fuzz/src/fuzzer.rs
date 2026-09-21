@@ -153,7 +153,7 @@ impl<T: Target, R: RngExt> Fuzzer<T, R> {
     /// anything.
     fn stop(&mut self, reason: String) {
         self.stats.infrastructure += 1;
-        log::error!("ending the campaign: {reason}");
+        tracing::error!("ending the campaign: {reason}");
         self.stopped = Some(reason);
     }
 
@@ -188,7 +188,7 @@ impl<T: Target, R: RngExt> Fuzzer<T, R> {
                     let killed_the_target = failure.killed_the_target;
                     failures.push(failure);
                     if killed_the_target {
-                        log::warn!("the target stopped serving while seeding");
+                        tracing::warn!("the target stopped serving while seeding");
                         break;
                     }
                 }
@@ -295,7 +295,7 @@ impl<T: Target, R: RngExt> Fuzzer<T, R> {
                 let killed_the_target = failure.killed_the_target;
                 failures.push(failure);
                 if killed_the_target {
-                    log::warn!("the target stopped serving; ending the campaign");
+                    tracing::warn!("the target stopped serving; ending the campaign");
                     break;
                 }
             }

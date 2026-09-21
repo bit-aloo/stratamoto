@@ -35,7 +35,7 @@ impl SimulatedDeployment {
             handle
                 .spawn(async move {
                     if let Err(e) = MockUpstream::new(config).run(connection).await {
-                        log::debug!("role stopped: {e}");
+                        tracing::debug!("role stopped: {e}");
                     }
                 })
                 .detach();

@@ -120,5 +120,5 @@ the test fails, and that is the signal to update the record.
 | `STRATAMOTO_RESET` | what the pool target replaces before each run: `pool` (default), `all` for the node and `sv2-tp` too, or `none` |
 | `STRATAMOTO_CORPUS` | a directory the fuzzer keeps its corpus in, and starts from next time |
 | `STRATAMOTO_TEMPLATE_PROVIDER_CACHE` | where Bitcoin Core and `sv2-tp` already live |
-| `RUST_LOG` | harness logging; the real roles log through `tracing` |
+| `RUST_LOG` | filters logging from the harness and the real roles alike, through `tracing` |
 | `LLVM_PROFILE_FILE` | where an instrumented build writes its profile at exit; `/dev/null` when only the fuzzer's observer needs the counters |

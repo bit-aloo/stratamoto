@@ -11,8 +11,6 @@ pool_sv2.workspace = true
 integration_tests_sv2.workspace = true
 stratum-apps = { workspace = true, features = ["config"] }
 tokio = { workspace = true, features = ["time"] }
-log.workspace = true
+tracing.workspace = true
 
 [dev-dependencies]
-env_logger.workspace = true
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }

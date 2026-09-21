@@ -14,3 +14,5 @@ pub mod transport;
 pub use stratamoto_dst as simulator;
 pub use stratamoto_ir as ir;
 pub use stratum_core;
+pub use tracing;
+pub use tracing_subscriber;

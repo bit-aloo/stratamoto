@@ -31,7 +31,12 @@ macro_rules! stratamoto_main {
         fn main() -> std::process::ExitCode {
             use $crate::scenario::{Scenario, ScenarioInput, ScenarioResult};
 
-            env_logger::init();
+            // One subscriber for the harness and the real roles alike, filtered by RUST_LOG;
+            // the runtime's `log` records are forwarded to it as well.
+            $crate::tracing_subscriber::fmt()
+                .with_env_filter($crate::tracing_subscriber::EnvFilter::from_default_env())
+                .with_writer(std::io::stderr)
+                .init();
 
             let bytes = match std::env::var("STRATAMOTO_INPUT") {
                 Ok(path) => std::fs::read(path).unwrap_or_default(),
@@ -49,7 +54,7 @@ macro_rules! stratamoto_main {
             let input = match <$input as ScenarioInput>::decode(&bytes) {
                 Ok(input) => input,
                 Err(e) => {
-                    log::warn!("skipping input that does not decode: {e}");
+                    $crate::tracing::warn!("skipping input that does not decode: {e}");
                     return std::process::ExitCode::SUCCESS;
                 }
             };
@@ -59,7 +64,9 @@ macro_rules! stratamoto_main {
             let mut scenario = match <$scenario as Scenario<$input>>::new() {
                 Ok(scenario) => scenario,
                 Err(e) => {
-                    log::error!("infrastructure failure: could not initialize the scenario: {e}");
+                    $crate::tracing::error!(
+                        "infrastructure failure: could not initialize the scenario: {e}"
+                    );
                     return std::process::ExitCode::from(2);
                 }
             };
@@ -67,15 +74,15 @@ macro_rules! stratamoto_main {
             match scenario.run(input) {
                 ScenarioResult::Ok => std::process::ExitCode::SUCCESS,
                 ScenarioResult::Skip => {
-                    log::warn!("skipping test case");
+                    $crate::tracing::warn!("skipping test case");
                     std::process::ExitCode::SUCCESS
                 }
                 ScenarioResult::Fail(e) => {
-                    log::error!("test case failed: {e}");
+                    $crate::tracing::error!("test case failed: {e}");
                     std::process::ExitCode::FAILURE
                 }
                 ScenarioResult::Infrastructure(e) => {
-                    log::error!("infrastructure failure: {e}");
+                    $crate::tracing::error!("infrastructure failure: {e}");
                     std::process::ExitCode::from(2)
                 }
             }

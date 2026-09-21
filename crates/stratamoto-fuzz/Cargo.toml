@@ -10,8 +10,8 @@ stratamoto-scenarios.workspace = true
 stratamoto.workspace = true
 postcard.workspace = true
 rand.workspace = true
-log.workspace = true
-env_logger.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
 
 [[bin]]
 name = "stratamoto-fuzz"

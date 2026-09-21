@@ -243,7 +243,7 @@ impl<D: Deployment> Runner<'_, D> {
 
             Action::Connect { connection, role } => {
                 let Some(link) = self.deployment.connect(*connection, *role) else {
-                    log::debug!("cannot open connection {connection} to role {role}");
+                    tracing::debug!("cannot open connection {connection} to role {role}");
                     return ActionOutcome::TransportError(format!(
                         "could not open connection {connection} to role {role}"
                     ));
@@ -267,7 +267,7 @@ impl<D: Deployment> Runner<'_, D> {
                 match link.send(*extension_type, *message_type, *channel_msg, payload) {
                     Ok(()) => ActionOutcome::Completed(Response::None),
                     Err(e) => {
-                        log::debug!("send failed on connection {connection}: {e}");
+                        tracing::debug!("send failed on connection {connection}: {e}");
                         transport_failure(e)
                     }
                 }
