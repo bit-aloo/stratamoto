@@ -3,7 +3,9 @@
 A fuzzer for [Stratum V2](https://github.com/stratum-mining/sv2-spec) roles, built along the
 lines of [fuzzamoto](https://github.com/dergoegge/fuzzamoto).
 
-How far each protocol message is taken is tracked in [`FEATURES.md`](FEATURES.md).
+How far each protocol message is taken is tracked in [`FEATURES.md`](FEATURES.md). How the
+whole thing works, from a program to a filed finding, is in
+[`docs/HowStratamotoWorks.md`](docs/HowStratamotoWorks.md).
 
 Test cases are not byte strings. They are programs in a typed intermediate
 representation, where the types record how one message depends on another: a `SetupConnection`
