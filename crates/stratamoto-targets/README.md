@@ -27,7 +27,8 @@ deployment.node().generate_blocks(1);                          // move the chain
 ```
 
 `start` runs the binary `STRATAMOTO_POOL` names. The pool's log is written next to its
-configuration, at `log_path()`.
+configuration, at `log_path()`, and goes with it when the deployment is dropped; when
+`STRATAMOTO_POOL_LOG` names a file, the log is written there instead and kept.
 
 Starting one waits until the pool has taken its first template and is accepting connections:
 about three seconds for the node and the pool together. The pool remembers what

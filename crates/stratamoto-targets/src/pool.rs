@@ -20,6 +20,11 @@ use crate::{
 /// The environment variable naming the pool binary, when no path is given.
 pub const POOL_BINARY_ENV: &str = "STRATAMOTO_POOL";
 
+/// The environment variable naming a file to write the pool's log to. Unlike the log in the
+/// pool's own directory, it is kept when the deployment is dropped, so that a replayed finding
+/// can be read alongside what the pool said.
+pub const POOL_LOG_ENV: &str = "STRATAMOTO_POOL_LOG";
+
 const COINBASE_REWARD_DESCRIPTOR: &str = "addr(tb1qa0sm0hxzj0x25rh8gw5xlzwlsfvvyz8u96w3p8)";
 const SHARES_PER_MINUTE: f32 = 120.0;
 const CERTIFICATE_VALIDITY_SECS: u64 = 3600;
@@ -49,12 +54,13 @@ pub struct PoolDeployment {
     node: Node,
 }
 
-/// The pool process, the address it serves on, and the directory its configuration and log
-/// live in.
+/// The pool process, the address it serves on, the directory its configuration lives in, and
+/// where it writes its log.
 struct Pool {
     child: Child,
     address: SocketAddr,
     dir: PathBuf,
+    log: PathBuf,
 }
 
 impl PoolDeployment {
@@ -90,10 +96,11 @@ impl PoolDeployment {
         self.pool.address
     }
 
-    /// Where the pool writes its log.
+    /// Where the pool writes its log: the file `STRATAMOTO_POOL_LOG` names, or a `pool.log` in
+    /// the pool's directory, which goes when the deployment does.
     #[must_use]
     pub fn log_path(&self) -> PathBuf {
-        self.pool.dir.join("pool.log")
+        self.pool.log.clone()
     }
 
     /// The node behind the pool, for a scenario that needs to move the chain tip.
@@ -118,7 +125,9 @@ impl Pool {
         let config_path = dir.join("pool-config.toml");
         std::fs::write(&config_path, config(address, node.data_dir()))?;
 
-        let log = File::create(dir.join("pool.log"))?;
+        let log_path =
+            std::env::var_os(POOL_LOG_ENV).map_or_else(|| dir.join("pool.log"), PathBuf::from);
+        let log = File::create(&log_path)?;
         let child = Command::new(binary)
             .arg("--config")
             .arg(&config_path)
@@ -132,6 +141,7 @@ impl Pool {
             child,
             address,
             dir,
+            log: log_path,
         };
 
         // The node's IPC socket is already there when it returns, so the only thing left to
@@ -152,7 +162,7 @@ impl Pool {
                 return Err(Error::Startup(format!(
                     "the pool exited with {status} before accepting a connection; its log is \
                      {}",
-                    self.dir.join("pool.log").display()
+                    self.log.display()
                 )));
             }
             match dial(self.address, CONNECT_RETRY_BUDGET) {

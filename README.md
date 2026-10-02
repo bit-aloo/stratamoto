@@ -176,6 +176,7 @@ the test fails, and that is the signal to update the record.
 | --- | --- |
 | `STRATAMOTO_INPUT` | read a scenario's program from a file instead of stdin |
 | `STRATAMOTO_POOL` | the pool binary the pool target runs |
+| `STRATAMOTO_POOL_LOG` | write the pool's log to this file, and keep it after the run |
 | `STRATAMOTO_DUMP_IR_CONTEXT` | where a locally run scenario writes the program context it dumps for the fuzzer |
 | `STRATAMOTO_TEMPLATE_PROVIDER_CACHE` | where Bitcoin Core already lives |
 | `RUST_LOG` | filters logging from the harness and the real roles alike, through `tracing` |
